@@ -2927,19 +2927,113 @@ fn convert_view_tree_from_wit(
 
         use self::shilpo::extension::view as wit_view;
         match token {
-            wit_view::SemanticColorToken::Primary => api::SemanticColorToken::Primary,
-            wit_view::SemanticColorToken::OnPrimary => api::SemanticColorToken::OnPrimary,
-            wit_view::SemanticColorToken::Secondary => api::SemanticColorToken::Secondary,
             wit_view::SemanticColorToken::Surface => api::SemanticColorToken::Surface,
+            wit_view::SemanticColorToken::OnSurface => api::SemanticColorToken::OnSurface,
+            wit_view::SemanticColorToken::SurfaceDim => api::SemanticColorToken::SurfaceDim,
+            wit_view::SemanticColorToken::SurfaceBright => api::SemanticColorToken::SurfaceBright,
+            wit_view::SemanticColorToken::SurfaceContainerLowest => {
+                api::SemanticColorToken::SurfaceContainerLowest
+            }
+            wit_view::SemanticColorToken::SurfaceContainerLow => {
+                api::SemanticColorToken::SurfaceContainerLow
+            }
             wit_view::SemanticColorToken::SurfaceContainer => {
                 api::SemanticColorToken::SurfaceContainer
             }
-            wit_view::SemanticColorToken::OnSurface => api::SemanticColorToken::OnSurface,
+            wit_view::SemanticColorToken::SurfaceContainerHigh => {
+                api::SemanticColorToken::SurfaceContainerHigh
+            }
+            wit_view::SemanticColorToken::SurfaceContainerHighest => {
+                api::SemanticColorToken::SurfaceContainerHighest
+            }
+            wit_view::SemanticColorToken::SurfaceVariant => {
+                api::SemanticColorToken::SurfaceVariant
+            }
             wit_view::SemanticColorToken::OnSurfaceVariant => {
                 api::SemanticColorToken::OnSurfaceVariant
             }
+            wit_view::SemanticColorToken::InverseSurface => {
+                api::SemanticColorToken::InverseSurface
+            }
+            wit_view::SemanticColorToken::InverseOnSurface => {
+                api::SemanticColorToken::InverseOnSurface
+            }
             wit_view::SemanticColorToken::Outline => api::SemanticColorToken::Outline,
+            wit_view::SemanticColorToken::OutlineVariant => {
+                api::SemanticColorToken::OutlineVariant
+            }
+            wit_view::SemanticColorToken::Shadow => api::SemanticColorToken::Shadow,
+            wit_view::SemanticColorToken::Scrim => api::SemanticColorToken::Scrim,
+            wit_view::SemanticColorToken::SurfaceTint => api::SemanticColorToken::SurfaceTint,
+            wit_view::SemanticColorToken::Primary => api::SemanticColorToken::Primary,
+            wit_view::SemanticColorToken::OnPrimary => api::SemanticColorToken::OnPrimary,
+            wit_view::SemanticColorToken::PrimaryContainer => {
+                api::SemanticColorToken::PrimaryContainer
+            }
+            wit_view::SemanticColorToken::OnPrimaryContainer => {
+                api::SemanticColorToken::OnPrimaryContainer
+            }
+            wit_view::SemanticColorToken::InversePrimary => {
+                api::SemanticColorToken::InversePrimary
+            }
+            wit_view::SemanticColorToken::PrimaryFixed => api::SemanticColorToken::PrimaryFixed,
+            wit_view::SemanticColorToken::PrimaryFixedDim => {
+                api::SemanticColorToken::PrimaryFixedDim
+            }
+            wit_view::SemanticColorToken::OnPrimaryFixed => {
+                api::SemanticColorToken::OnPrimaryFixed
+            }
+            wit_view::SemanticColorToken::OnPrimaryFixedVariant => {
+                api::SemanticColorToken::OnPrimaryFixedVariant
+            }
+            wit_view::SemanticColorToken::Secondary => api::SemanticColorToken::Secondary,
+            wit_view::SemanticColorToken::OnSecondary => api::SemanticColorToken::OnSecondary,
+            wit_view::SemanticColorToken::SecondaryContainer => {
+                api::SemanticColorToken::SecondaryContainer
+            }
+            wit_view::SemanticColorToken::OnSecondaryContainer => {
+                api::SemanticColorToken::OnSecondaryContainer
+            }
+            wit_view::SemanticColorToken::SecondaryFixed => {
+                api::SemanticColorToken::SecondaryFixed
+            }
+            wit_view::SemanticColorToken::SecondaryFixedDim => {
+                api::SemanticColorToken::SecondaryFixedDim
+            }
+            wit_view::SemanticColorToken::OnSecondaryFixed => {
+                api::SemanticColorToken::OnSecondaryFixed
+            }
+            wit_view::SemanticColorToken::OnSecondaryFixedVariant => {
+                api::SemanticColorToken::OnSecondaryFixedVariant
+            }
+            wit_view::SemanticColorToken::Tertiary => api::SemanticColorToken::Tertiary,
+            wit_view::SemanticColorToken::OnTertiary => api::SemanticColorToken::OnTertiary,
+            wit_view::SemanticColorToken::TertiaryContainer => {
+                api::SemanticColorToken::TertiaryContainer
+            }
+            wit_view::SemanticColorToken::OnTertiaryContainer => {
+                api::SemanticColorToken::OnTertiaryContainer
+            }
+            wit_view::SemanticColorToken::TertiaryFixed => {
+                api::SemanticColorToken::TertiaryFixed
+            }
+            wit_view::SemanticColorToken::TertiaryFixedDim => {
+                api::SemanticColorToken::TertiaryFixedDim
+            }
+            wit_view::SemanticColorToken::OnTertiaryFixed => {
+                api::SemanticColorToken::OnTertiaryFixed
+            }
+            wit_view::SemanticColorToken::OnTertiaryFixedVariant => {
+                api::SemanticColorToken::OnTertiaryFixedVariant
+            }
             wit_view::SemanticColorToken::Error => api::SemanticColorToken::Error,
+            wit_view::SemanticColorToken::OnError => api::SemanticColorToken::OnError,
+            wit_view::SemanticColorToken::ErrorContainer => {
+                api::SemanticColorToken::ErrorContainer
+            }
+            wit_view::SemanticColorToken::OnErrorContainer => {
+                api::SemanticColorToken::OnErrorContainer
+            }
         }
     }
 

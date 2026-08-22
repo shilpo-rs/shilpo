@@ -14,7 +14,7 @@ use shilpo_services::{
 use super::geometry::HUG_CORNER_RADIUS;
 use crate::bar::cards::{
     adapter::CardCoordinator,
-    model::{CardRequest, CardSourceId, CardSourceState},
+    model::{CardRequest, CardSourceId},
 };
 use crate::bar::service_worker::{self, WorkerCommand};
 use crate::bar::widgets::clock::{format_clock, format_date};
@@ -704,15 +704,21 @@ impl BarView {
                                 instance_id_str,
                                 Option::<gpui::SharedString>::None,
                             );
-                            let is_open = CardCoordinator::source_state(cx, &source_id)
-                                == CardSourceState::PersistentOpen;
-
-                            let mut wrapper =
-                                div().id(format!("ext_widget_menu_{section_name}_{index}"));
-                            if is_open {
-                                wrapper =
-                                    wrapper.bg(cx.theme().surface_container_high).rounded_lg();
-                            }
+                            // This wrapper is purely the click target -- consistent padding and
+                            // a pill-shaped hit region. It does not draw its own "active" state:
+                            // the extension's palette now covers the full Material role set
+                            // (SemanticColorToken mirrors ThemeColor directly), so an extension
+                            // that wants a battery-style selected look can recolor its own
+                            // icon/text as a matched pair (e.g. secondary_container/
+                            // on_secondary_container) using the `BarMenuOpened`/`BarMenuClosed`
+                            // events it already receives, exactly like a native widget would.
+                            // A second, host-drawn highlight layered on top of that would just
+                            // double up as a visually conflicting extra ring around it.
+                            let mut wrapper = div()
+                                .id(format!("ext_widget_menu_{section_name}_{index}"))
+                                .px(px(6.0))
+                                .py(px(2.0))
+                                .rounded_full();
                             let source_id_clone = source_id.clone();
                             let source_id_prepaint = source_id.clone();
                             let current_display = self.display_id;
