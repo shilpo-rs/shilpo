@@ -82,24 +82,26 @@ impl CardProvider for ExtensionMenuCardProvider {
         ShellRuntime::extension_view(cx, &self.menu_canonical_id).is_some()
     }
 
+    /// Before the first real content measurement lands, this needs *some* non-degenerate
+    /// size for the placement engine to work with. `cx.primary_display()` is not a reliable
+    /// source for that: on setups without a clearly-defined primary monitor (multi-display
+    /// Wayland compositors routinely have none) it returns `None`, collapsing both dimensions
+    /// to the inner `unwrap_or(px(1.0))` fallback -- a 1x1 card, which the placement engine
+    /// correctly refuses to show at all. Use the same fixed default every other card-open
+    /// fallback in this module already uses instead of depending on a "primary display"
+    /// concept that may not exist here.
     fn preferred_size(
         &self,
         _channel: CardChannel,
         _source: &CardSourceId,
-        cx: &App,
+        _cx: &App,
     ) -> Size<Pixels> {
         self.measured_size
             .lock()
             .expect("extension menu measurement lock is not poisoned")
             .unwrap_or_else(|| Size {
-                width: cx
-                    .primary_display()
-                    .map(|display| display.bounds().size.width)
-                    .unwrap_or(px(1.0)),
-                height: cx
-                    .primary_display()
-                    .map(|display| display.bounds().size.height)
-                    .unwrap_or(px(1.0)),
+                width: px(360.0),
+                height: px(280.0),
             })
     }
 
@@ -160,8 +162,18 @@ impl CardProvider for ExtensionMenuCardProvider {
             height: intrinsic.height.min(max_height) + px(32.0),
         };
         if update_cached_measurement(&self.measured_size, measured) {
+            // `Window::defer` wraps its callback in `handle.update(cx, ...)` on *this same*
+            // band window -- see gpui's `Window::defer` impl. Dispatching from inside that
+            // would make `ensure_band`'s later `handle.update()` on this same window a
+            // re-entrant update call, which gpui correctly refuses. That refusal was being
+            // misread as "stale handle, needs recreating", so every single reposition (i.e.
+            // every time an extension's card content changes size after first open) spawned
+            // a brand new band window while abandoning the old one -- which was never
+            // actually stale, just mid-update. `App::defer` runs on the next effects flush
+            // without being scoped to any window's update, so it doesn't have this problem;
+            // the callback only needs `cx` anyway.
             let source = source.clone();
-            window.defer(cx, move |_, cx| {
+            cx.defer(move |cx| {
                 super::adapter::CardCoordinator::dispatch(
                     cx,
                     super::model::CardRequest::Reposition { source },

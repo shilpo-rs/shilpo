@@ -460,7 +460,18 @@ impl CardCoordinator {
                     Self::dispatch_menu_event(cx, &src, false, Some(mapped_reason));
                 }
                 Self::close_channel(cx, channel, display_id, reason);
-                Self::schedule_close_completion(cx, channel, display_id, generation);
+                let closing_handle = display_id.and_then(|display_id| {
+                    let coordinator = &cx
+                        .global::<ShellRuntime>()
+                        .shell_surfaces()
+                        .card_coordinator;
+                    match channel {
+                        CardChannel::Persistent => coordinator.persistent_bands.get(&display_id),
+                        CardChannel::Preview => coordinator.preview_bands.get(&display_id),
+                    }
+                    .copied()
+                });
+                Self::schedule_close_completion(cx, channel, display_id, generation, closing_handle);
             }
 
             CardEffect::RepositionChannel { channel, source } => {
@@ -581,6 +592,7 @@ impl CardCoordinator {
         channel: CardChannel,
         display_id: Option<DisplayId>,
         generation: u64,
+        closing_handle: Option<WindowHandle<CardBandView>>,
     ) {
         let reduced_motion = ShellRuntime::active_config(cx).theme.reduced_motion;
         if reduced_motion {
@@ -599,7 +611,7 @@ impl CardCoordinator {
                 .timer(super::band::ANIM_DURATION)
                 .await;
             cx.update(|cx| {
-                Self::clear_band_if_still_closing(cx, channel, display_id, generation);
+                Self::clear_band_if_still_closing(cx, channel, display_id, generation, closing_handle);
                 Self::dispatch(
                     cx,
                     CardRequest::CloseAnimationFinished {
@@ -620,16 +632,27 @@ impl CardCoordinator {
         }
     }
 
+    /// Closing a band window is deferred behind a fade-out animation, so this runs on a
+    /// timer well after the `CloseChannel` effect that scheduled it. If a *newer* open/close
+    /// cycle for the same channel+display has already superseded this one by the time the
+    /// timer fires (a real scenario -- rapid re-toggling races the animation), the
+    /// lifecycle/generation guard below correctly declines to touch the newer cycle's state.
+    /// But `closing_handle` -- the window this specific completion was scheduled to tear
+    /// down -- must still be destroyed in that case: if the coordinator's map has already
+    /// moved on to a different handle for this slot, nothing else is ever going to clean up
+    /// the orphaned one, and it would otherwise stay mapped on screen forever, showing
+    /// whatever content it last had.
     fn clear_band_if_still_closing(
         cx: &mut App,
         channel: CardChannel,
         display_id: Option<DisplayId>,
         generation: u64,
+        closing_handle: Option<WindowHandle<CardBandView>>,
     ) {
         let Some(display_id) = display_id else {
             return;
         };
-        let handle = {
+        let still_current = {
             let coordinator = &cx
                 .global::<ShellRuntime>()
                 .shell_surfaces()
@@ -638,18 +661,25 @@ impl CardCoordinator {
                 CardChannel::Persistent => &coordinator.state.persistent,
                 CardChannel::Preview => &coordinator.state.preview,
             };
-            if slot.lifecycle != super::model::ChannelLifecycle::Closing
-                || slot.generation != generation
-            {
-                return;
-            }
+            slot.lifecycle == super::model::ChannelLifecycle::Closing && slot.generation == generation
+        };
+
+        let mapped_handle = {
+            let coordinator = &cx
+                .global::<ShellRuntime>()
+                .shell_surfaces()
+                .card_coordinator;
             match channel {
                 CardChannel::Persistent => coordinator.persistent_bands.get(&display_id),
                 CardChannel::Preview => coordinator.preview_bands.get(&display_id),
             }
             .copied()
         };
-        if let Some(handle) = handle {
+
+        if still_current {
+            let Some(handle) = mapped_handle else {
+                return;
+            };
             if channel == CardChannel::Persistent {
                 cx.global_mut::<ShellRuntime>()
                     .shell_surfaces_mut()
@@ -660,6 +690,17 @@ impl CardCoordinator {
             } else {
                 let _ = handle.update(cx, |band, _, cx| band.clear(cx));
             }
+            return;
+        }
+
+        // A newer cycle has already taken over this slot. If it's reusing the exact same
+        // window this completion was scheduled for, leave it alone -- it's legitimately
+        // serving the new open. Otherwise this handle is orphaned; tear it down directly
+        // since the map no longer references it.
+        if let Some(closing_handle) = closing_handle
+            && mapped_handle != Some(closing_handle)
+        {
+            let _ = closing_handle.update(cx, |_, window, _| window.remove_window());
         }
     }
 
