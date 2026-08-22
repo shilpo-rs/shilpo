@@ -101,9 +101,8 @@ pub fn decode_and_validate_record(
                         }),
                         ViewNode::Text(TextNode {
                             content: text,
-                            font_size: None,
-                            bold: None,
                             style: semantic_style,
+                            ..Default::default()
                         }),
                     ],
                     style: None,
@@ -116,9 +115,8 @@ pub fn decode_and_validate_record(
             } else {
                 ViewNode::Text(TextNode {
                     content: text,
-                    font_size: None,
-                    bold: None,
                     style: semantic_style,
+                    ..Default::default()
                 })
             };
             ViewTree::new(root)

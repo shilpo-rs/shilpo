@@ -287,8 +287,7 @@ mod tests {
                 ViewTree::new(ViewNode::Text(TextNode {
                     content: "12:30".into(),
                     font_size: Some(14.0),
-                    bold: None,
-                    style: None,
+                    ..Default::default()
                 }))
             })
         }

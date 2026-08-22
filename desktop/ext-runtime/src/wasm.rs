@@ -2519,7 +2519,7 @@ fn convert_event_to_wit(
 #[cfg(test)]
 mod bar_menu_component_fixture_tests {
     use shilpo_ext_api::{
-        Alignment, BarMenuCloseReason, ContainerDirection, Justification, Overflow,
+        Alignment, BarMenuCloseReason, ContainerDirection, Fill, Justification, Overflow,
         SemanticColorToken, ViewNode,
     };
 
@@ -2569,7 +2569,12 @@ mod bar_menu_component_fixture_tests {
         assert_eq!(style.corner_radius, Some(16.0));
         assert_eq!(style.opacity, Some(0.95));
         assert_eq!(style.color, Some(SemanticColorToken::OnSurface));
-        assert_eq!(style.background, Some(SemanticColorToken::SurfaceContainer));
+        assert_eq!(
+            style.background,
+            Some(Fill::Solid {
+                color: SemanticColorToken::SurfaceContainer
+            })
+        );
         assert_eq!(style.border_width, Some(1.0));
         assert_eq!(style.border_color, Some(SemanticColorToken::Outline));
         assert_eq!(style.min_width, None);
@@ -2818,6 +2823,15 @@ fn convert_view_tree_from_wit(
                 content: t.content.clone(),
                 font_size: t.font_size,
                 bold: t.bold,
+                italic: t.italic,
+                text_align: t.text_align.map(|a| match a {
+                    wit_view::TextAlign::Start => api::TextAlign::Start,
+                    wit_view::TextAlign::Center => api::TextAlign::Center,
+                    wit_view::TextAlign::End => api::TextAlign::End,
+                }),
+                line_height: t.line_height,
+                letter_spacing: t.letter_spacing,
+                max_lines: t.max_lines,
                 style: t.style.as_ref().map(decode_style),
             }),
             wit_view::ViewNode::Icon(i) => api::ViewNode::Icon(api::IconNode {
@@ -2898,16 +2912,24 @@ fn convert_view_tree_from_wit(
         use self::shilpo::extension::view as wit_view;
         shilpo_ext_api::ViewStyle {
             padding: s.padding,
+            padding_edges: s.padding_edges.map(decode_edge_insets),
             margin: s.margin,
+            margin_edges: s.margin_edges.map(decode_edge_insets),
             width: s.width,
             height: s.height,
             corner_radius: s.corner_radius,
+            corner_radii: s.corner_radii.map(decode_corner_radii),
             opacity: s.opacity,
             color: s.color.map(decode_color),
-            background: s.background.map(decode_color),
+            background: s.background.as_ref().map(decode_fill),
             flex_grow: s.flex_grow,
             border_width: s.border_width,
+            border_edges: s.border_edges.map(decode_edge_insets),
             border_color: s.border_color.map(decode_color),
+            shadows: s
+                .shadows
+                .as_ref()
+                .map(|shadows| shadows.iter().map(decode_shadow).collect()),
             min_width: s.min_width,
             max_width: s.max_width,
             min_height: s.min_height,
@@ -2917,6 +2939,55 @@ fn convert_view_tree_from_wit(
                 wit_view::Overflow::Hidden => api::Overflow::Hidden,
                 wit_view::Overflow::Scroll => api::Overflow::Scroll,
             }),
+        }
+    }
+
+    fn decode_edge_insets(
+        insets: self::shilpo::extension::view::EdgeInsets,
+    ) -> shilpo_ext_api::EdgeInsets {
+        shilpo_ext_api::EdgeInsets {
+            top: insets.top,
+            right: insets.right,
+            bottom: insets.bottom,
+            left: insets.left,
+        }
+    }
+
+    fn decode_corner_radii(
+        radii: self::shilpo::extension::view::CornerRadii,
+    ) -> shilpo_ext_api::CornerRadii {
+        shilpo_ext_api::CornerRadii {
+            top_left: radii.top_left,
+            top_right: radii.top_right,
+            bottom_left: radii.bottom_left,
+            bottom_right: radii.bottom_right,
+        }
+    }
+
+    fn decode_fill(fill: &self::shilpo::extension::view::Fill) -> shilpo_ext_api::Fill {
+        use self::shilpo::extension::view as wit_view;
+        match fill {
+            wit_view::Fill::Solid(token) => shilpo_ext_api::Fill::Solid {
+                color: decode_color(*token),
+            },
+            wit_view::Fill::LinearGradient(gradient) => shilpo_ext_api::Fill::LinearGradient {
+                angle: gradient.angle,
+                from: decode_color(gradient.start_color),
+                to: decode_color(gradient.end_color),
+            },
+        }
+    }
+
+    fn decode_shadow(
+        shadow: &self::shilpo::extension::view::ShadowStyle,
+    ) -> shilpo_ext_api::ShadowStyle {
+        shilpo_ext_api::ShadowStyle {
+            color: decode_color(shadow.color),
+            offset_x: shadow.offset_x,
+            offset_y: shadow.offset_y,
+            blur_radius: shadow.blur_radius,
+            spread_radius: shadow.spread_radius,
+            inset: shadow.inset,
         }
     }
 
@@ -3054,16 +3125,23 @@ mod wit_conversion_tests {
                 children: vec![],
                 style: Some(wit_view::ViewStyle {
                     padding: Some(10.0),
+                    padding_edges: None,
                     margin: None,
+                    margin_edges: None,
                     width: None,
                     height: None,
                     corner_radius: None,
+                    corner_radii: None,
                     opacity: Some(0.8),
                     color: Some(wit_view::SemanticColorToken::Primary),
-                    background: Some(wit_view::SemanticColorToken::SurfaceContainer),
+                    background: Some(wit_view::Fill::Solid(
+                        wit_view::SemanticColorToken::SurfaceContainer,
+                    )),
                     flex_grow: None,
                     border_width: Some(2.0),
+                    border_edges: None,
                     border_color: Some(wit_view::SemanticColorToken::Outline),
+                    shadows: None,
                     min_width: Some(100.0),
                     max_width: Some(500.0),
                     min_height: Some(50.0),

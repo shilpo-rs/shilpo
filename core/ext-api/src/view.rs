@@ -101,6 +101,14 @@ pub enum Justification {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub enum TextAlign {
+    Start,
+    Center,
+    End,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum Overflow {
     Visible,
     Hidden,
@@ -159,20 +167,89 @@ pub enum SemanticColorToken {
     OnErrorContainer,
 }
 
+/// Four independent per-side values. Used for padding and border widths, where a design may
+/// legitimately want e.g. a divider only on the bottom edge rather than all four.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct EdgeInsets {
+    pub top: Option<f32>,
+    pub right: Option<f32>,
+    pub bottom: Option<f32>,
+    pub left: Option<f32>,
+}
+
+/// Four independent corner radii. A design that groups several elements into one continuous
+/// shape (a Material "button group", a card whose bottom edge sits flush against another
+/// element) needs to round only the outer corners -- a single uniform `corner_radius` cannot
+/// express that, no matter how many nested containers it's split across.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CornerRadii {
+    pub top_left: Option<f32>,
+    pub top_right: Option<f32>,
+    pub bottom_left: Option<f32>,
+    pub bottom_right: Option<f32>,
+}
+
+/// A fill for a container's background. `Solid` covers the common case; `LinearGradient`
+/// exists because a two-tone hero surface or a subtle depth cue is a real, common design need
+/// that a single flat token can't express, and the renderer (GPUI) already supports two-stop
+/// linear gradients as a native background primitive -- this just exposes that.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Fill {
+    Solid {
+        color: SemanticColorToken,
+    },
+    LinearGradient {
+        /// Degrees, measured clockwise from pointing up (CSS `linear-gradient` convention).
+        angle: f32,
+        from: SemanticColorToken,
+        to: SemanticColorToken,
+    },
+}
+
+/// A single drop shadow or glow. Setting `blur_radius` with no `offset` and no `spread`
+/// produces a soft, centered glow -- the mechanism behind any "halo" effect around an icon or
+/// badge -- rather than a directional drop shadow, which is `offset` with little or no blur.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ShadowStyle {
+    pub color: SemanticColorToken,
+    #[serde(default)]
+    pub offset_x: f32,
+    #[serde(default)]
+    pub offset_y: f32,
+    #[serde(default)]
+    pub blur_radius: f32,
+    #[serde(default)]
+    pub spread_radius: f32,
+    #[serde(default)]
+    pub inset: bool,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ViewStyle {
+    /// Uniform padding. Ignored on any side overridden by `padding_edges`.
     pub padding: Option<f32>,
+    pub padding_edges: Option<EdgeInsets>,
     pub margin: Option<f32>,
+    pub margin_edges: Option<EdgeInsets>,
     pub width: Option<f32>,
     pub height: Option<f32>,
+    /// Uniform corner radius. Ignored on any corner overridden by `corner_radii`.
     pub corner_radius: Option<f32>,
+    pub corner_radii: Option<CornerRadii>,
     pub opacity: Option<f32>,
     pub color: Option<SemanticColorToken>,
-    pub background: Option<SemanticColorToken>,
+    pub background: Option<Fill>,
     pub flex_grow: Option<f32>,
+    /// Uniform border width. Ignored on any side overridden by `border_edges`.
     pub border_width: Option<f32>,
+    pub border_edges: Option<EdgeInsets>,
     pub border_color: Option<SemanticColorToken>,
+    pub shadows: Option<Vec<ShadowStyle>>,
     pub min_width: Option<f32>,
     pub max_width: Option<f32>,
     pub min_height: Option<f32>,
@@ -195,12 +272,19 @@ pub struct ContainerNode {
     pub event_id: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct TextNode {
     pub content: String,
     pub font_size: Option<f32>,
     pub bold: Option<bool>,
+    pub italic: Option<bool>,
+    pub text_align: Option<TextAlign>,
+    pub line_height: Option<f32>,
+    pub letter_spacing: Option<f32>,
+    /// Clamps to this many lines, eliding the remainder with an ellipsis. A single-line clamp
+    /// is the common "truncate with ellipsis" case; anything greater is a real multi-line clamp.
+    pub max_lines: Option<u32>,
     pub style: Option<ViewStyle>,
 }
 
@@ -344,13 +428,13 @@ fn validate_node(
                     if container.wrap {
                         return invalid("wrap is not supported for stack direction");
                     }
-                    if container.align_items.is_some()
-                        || container.justify_content.is_some()
-                        || container.gap.is_some_and(|g| g > 0.0)
-                    {
-                        return invalid(
-                            "stack layout does not support alignment, justification, or gap",
-                        );
+                    // Alignment and justification are meaningful for a stack: they control
+                    // where each layered child sits within the stack's bounds (e.g. centering
+                    // a badge over a halo behind it) without every child needing to match the
+                    // stack's own size. Gap is not: stacked children overlap by definition, so
+                    // there is no "between" for a gap to apply to.
+                    if container.gap.is_some_and(|g| g > 0.0) {
+                        return invalid("gap is not supported for stack direction");
                     }
                 }
                 ContainerDirection::Row | ContainerDirection::Column => {}
@@ -373,6 +457,13 @@ fn validate_node(
         ViewNode::Text(text) => {
             validate_text(&text.content)?;
             validate_positive("font size", text.font_size)?;
+            validate_positive("line height", text.line_height)?;
+            if text.letter_spacing.is_some_and(|value| !value.is_finite()) {
+                return invalid("letter spacing must be finite");
+            }
+            if text.max_lines == Some(0) {
+                return invalid("max lines must be at least one");
+            }
             validate_style(text.style.as_ref())?;
         }
         ViewNode::Icon(icon) => {
@@ -498,6 +589,31 @@ fn validate_style(style: Option<&ViewStyle>) -> Result<(), ViewValidationError> 
     validate_nonnegative("max width", style.max_width)?;
     validate_nonnegative("min height", style.min_height)?;
     validate_nonnegative("max height", style.max_height)?;
+    validate_edge_insets("padding edges", style.padding_edges.as_ref())?;
+    validate_edge_insets("margin edges", style.margin_edges.as_ref())?;
+    validate_edge_insets("border edges", style.border_edges.as_ref())?;
+    if let Some(radii) = &style.corner_radii {
+        validate_nonnegative("top-left corner radius", radii.top_left)?;
+        validate_nonnegative("top-right corner radius", radii.top_right)?;
+        validate_nonnegative("bottom-left corner radius", radii.bottom_left)?;
+        validate_nonnegative("bottom-right corner radius", radii.bottom_right)?;
+    }
+    if let Some(Fill::LinearGradient { angle, .. }) = &style.background
+        && !angle.is_finite()
+    {
+        return invalid("gradient angle must be finite");
+    }
+    for shadow in style.shadows.iter().flatten() {
+        if !shadow.blur_radius.is_finite() || shadow.blur_radius < 0.0 {
+            return invalid("shadow blur radius must be finite and non-negative");
+        }
+        if !shadow.spread_radius.is_finite() {
+            return invalid("shadow spread radius must be finite");
+        }
+        if !shadow.offset_x.is_finite() || !shadow.offset_y.is_finite() {
+            return invalid("shadow offset must be finite");
+        }
+    }
 
     if let (Some(min_w), Some(max_w)) = (style.min_width, style.max_width)
         && min_w > max_w
@@ -543,6 +659,23 @@ fn validate_style(style: Option<&ViewStyle>) -> Result<(), ViewValidationError> 
 fn validate_nonnegative(field: &str, value: Option<f32>) -> Result<(), ViewValidationError> {
     if value.is_some_and(|value| !value.is_finite() || value < 0.0) {
         return invalid(format!("{field} must be finite and non-negative"));
+    }
+    Ok(())
+}
+
+fn validate_edge_insets(field: &str, insets: Option<&EdgeInsets>) -> Result<(), ViewValidationError> {
+    let Some(insets) = insets else {
+        return Ok(());
+    };
+    for (side, value) in [
+        ("top", insets.top),
+        ("right", insets.right),
+        ("bottom", insets.bottom),
+        ("left", insets.left),
+    ] {
+        if value.is_some_and(|value| !value.is_finite() || value < 0.0) {
+            return invalid(format!("{field} {side} must be finite and non-negative"));
+        }
     }
     Ok(())
 }
@@ -892,7 +1025,8 @@ mod tests {
 
     #[test]
     fn stack_rejects_unsupported_properties_and_grid_stack_reject_wrap() {
-        // Stack with align_items
+        // Stack with align_items -- valid: it positions each layered child within the
+        // stack's bounds (e.g. centering a badge over a halo behind it).
         let tree1 = ViewTree::new(ViewNode::Container(ContainerNode {
             direction: ContainerDirection::Stack,
             children: vec![],
@@ -903,9 +1037,9 @@ mod tests {
             wrap: false,
             event_id: None,
         }));
-        assert!(tree1.validate(ViewLimits::default()).is_err());
+        assert!(tree1.validate(ViewLimits::default()).is_ok());
 
-        // Stack with justify_content
+        // Stack with justify_content -- also valid, same reasoning.
         let tree2 = ViewTree::new(ViewNode::Container(ContainerNode {
             direction: ContainerDirection::Stack,
             children: vec![],
@@ -916,9 +1050,10 @@ mod tests {
             wrap: false,
             event_id: None,
         }));
-        assert!(tree2.validate(ViewLimits::default()).is_err());
+        assert!(tree2.validate(ViewLimits::default()).is_ok());
 
-        // Stack with gap > 0
+        // Stack with gap > 0 -- still rejected: stacked children overlap by definition, so
+        // there is no "between" for a gap to apply to.
         let tree3 = ViewTree::new(ViewNode::Container(ContainerNode {
             direction: ContainerDirection::Stack,
             children: vec![],

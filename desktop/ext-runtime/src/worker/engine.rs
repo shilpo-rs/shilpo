@@ -261,10 +261,25 @@ impl<R: ExtensionRuntime> ExtensionSession<R> {
         }
     }
 
+    // A rejected view tree is otherwise indistinguishable from "nothing changed": the extension
+    // keeps whatever it last rendered successfully, with no error surfaced anywhere. That's
+    // fine for a transient host hiccup, but silent for a genuine authoring mistake -- a
+    // container missing a required field, an invalid style combination -- which then reads as
+    // the view being permanently stuck rather than what it actually is.
     fn refresh_view(&mut self, canonical: &CanonicalId, changes: &mut ExtensionChanges) {
-        if let Ok(Some(view)) = self.host.render_view(canonical) {
-            self.views.insert(canonical.clone(), view);
-            changes.invalidated_views.push(canonical.clone());
+        match self.host.render_view(canonical) {
+            Ok(Some(view)) => {
+                self.views.insert(canonical.clone(), view);
+                changes.invalidated_views.push(canonical.clone());
+            }
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(
+                    canonical = %canonical,
+                    %error,
+                    "extension view render failed; keeping the last successfully rendered frame"
+                );
+            }
         }
     }
 
@@ -1736,9 +1751,7 @@ mod tests {
                 Some(ViewTree::new(shilpo_ext_api::ViewNode::Text(
                     shilpo_ext_api::TextNode {
                         content: "Weather Menu".into(),
-                        style: None,
-                        font_size: None,
-                        bold: None,
+                        ..Default::default()
                     },
                 )))
             } else {
@@ -1901,9 +1914,7 @@ mod tests {
             Some(ViewTree::new(shilpo_ext_api::ViewNode::Text(
                 shilpo_ext_api::TextNode {
                     content: contribution_id.to_owned(),
-                    style: None,
-                    font_size: None,
-                    bold: None,
+                    ..Default::default()
                 },
             )))
         }
@@ -1971,9 +1982,7 @@ mod tests {
                 }))),
                 label => Some(ViewTree::new(ViewNode::Text(TextNode {
                     content: label.into(),
-                    style: None,
-                    font_size: None,
-                    bold: None,
+                    ..Default::default()
                 }))),
             }
         }

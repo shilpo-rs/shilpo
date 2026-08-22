@@ -238,9 +238,8 @@ mod tests {
             direction: ContainerDirection::Column,
             children: vec![ViewNode::Text(TextNode {
                 content: "A deliberately long menu label".into(),
-                style: None,
                 font_size: Some(20.0),
-                bold: None,
+                ..Default::default()
             })],
             style: None,
             gap: None,
@@ -271,9 +270,8 @@ mod tests {
     fn text_tree(content: &str, font_size: f32) -> ViewTree {
         ViewTree::new(ViewNode::Text(TextNode {
             content: content.into(),
-            style: None,
             font_size: Some(font_size),
-            bold: None,
+            ..Default::default()
         }))
     }
 
@@ -310,9 +308,7 @@ mod tests {
             MeasuredMenu {
                 tree: ViewTree::new(ViewNode::Text(TextNode {
                     content: "Host-sized label".into(),
-                    style: None,
-                    font_size: None,
-                    bold: None,
+                    ..Default::default()
                 })),
                 measured: measurements,
             }

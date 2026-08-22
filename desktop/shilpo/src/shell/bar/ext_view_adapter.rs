@@ -3,8 +3,8 @@ use gpui::{
     StatefulInteractiveElement, Styled, Window, div, px,
 };
 use shilpo_ext_api::{
-    Alignment, CanonicalId, ContainerDirection, Justification, Overflow, SemanticColorToken,
-    ViewNode, ViewStyle, ViewTree,
+    Alignment, CanonicalId, ContainerDirection, CornerRadii, EdgeInsets, Fill, Justification,
+    Overflow, SemanticColorToken, ShadowStyle, TextAlign, ViewNode, ViewStyle, ViewTree,
 };
 use shilpo_m3e::{
     ActiveTheme, Icon, Sizable, Size,
@@ -28,16 +28,21 @@ pub struct ContainerDescriptor {
 #[derive(Clone, Debug, PartialEq)]
 pub struct StyleDescriptor {
     pub padding: Option<f32>,
+    pub padding_edges: Option<EdgeInsets>,
     pub margin: Option<f32>,
+    pub margin_edges: Option<EdgeInsets>,
     pub width: Option<f32>,
     pub height: Option<f32>,
     pub corner_radius: Option<f32>,
+    pub corner_radii: Option<CornerRadii>,
     pub opacity: Option<f32>,
     pub color: Option<SemanticColorToken>,
-    pub background: Option<SemanticColorToken>,
+    pub background: Option<Fill>,
     pub flex_grow: Option<f32>,
     pub border_width: Option<f32>,
+    pub border_edges: Option<EdgeInsets>,
     pub border_color: Option<SemanticColorToken>,
+    pub shadows: Option<Vec<ShadowStyle>>,
     pub min_width: Option<f32>,
     pub max_width: Option<f32>,
     pub min_height: Option<f32>,
@@ -59,16 +64,21 @@ pub fn map_container_descriptor(c: &shilpo_ext_api::ContainerNode) -> ContainerD
 pub fn map_style_descriptor(s: &ViewStyle) -> StyleDescriptor {
     StyleDescriptor {
         padding: s.padding,
+        padding_edges: s.padding_edges,
         margin: s.margin,
+        margin_edges: s.margin_edges,
         width: s.width,
         height: s.height,
         corner_radius: s.corner_radius,
+        corner_radii: s.corner_radii,
         opacity: s.opacity,
         color: s.color,
         background: s.background,
         flex_grow: s.flex_grow,
         border_width: s.border_width,
+        border_edges: s.border_edges,
         border_color: s.border_color,
+        shadows: s.shadows.clone(),
         min_width: s.min_width,
         max_width: s.max_width,
         min_height: s.min_height,
@@ -112,7 +122,14 @@ fn render_view_node(
                 container = container.flex_wrap();
             }
 
-            if let Some(align) = c.align_items {
+            // A stack's align_items/justify_content describe how each *layered* child sits
+            // within the stack's bounds (e.g. centering a badge over a halo behind it), not how
+            // the stack arranges its own children in flex flow -- it has none, they overlap by
+            // definition. Applying them to the outer div here would be a no-op anyway since
+            // that div isn't a flex container; the child wrapper below is where they actually
+            // apply.
+            let is_stack = c.direction == ContainerDirection::Stack;
+            if !is_stack && let Some(align) = c.align_items {
                 container = match align {
                     Alignment::Start => container.items_start(),
                     Alignment::Center => container.items_center(),
@@ -121,7 +138,7 @@ fn render_view_node(
                 };
             }
 
-            if let Some(just) = c.justify_content {
+            if !is_stack && let Some(just) = c.justify_content {
                 container = match just {
                     Justification::Start => container.justify_start(),
                     Justification::Center => container.justify_center(),
@@ -141,8 +158,22 @@ fn render_view_node(
 
             for child in &c.children {
                 let child = render_view_node(contribution, instance_id, child, window, cx);
-                container = if c.direction == ContainerDirection::Stack {
-                    container.child(div().absolute().inset_0().child(child))
+                container = if is_stack {
+                    let mut wrapper = div().absolute().inset_0().flex();
+                    wrapper = match c.align_items {
+                        Some(Alignment::Start) => wrapper.items_start(),
+                        Some(Alignment::Center) => wrapper.items_center(),
+                        Some(Alignment::End) => wrapper.items_end(),
+                        Some(Alignment::Stretch) | None => wrapper.items_stretch(),
+                    };
+                    wrapper = match c.justify_content {
+                        Some(Justification::Start) | None => wrapper.justify_start(),
+                        Some(Justification::Center) => wrapper.justify_center(),
+                        Some(Justification::End) => wrapper.justify_end(),
+                        Some(Justification::SpaceBetween) => wrapper.justify_between(),
+                        Some(Justification::SpaceAround) => wrapper.justify_around(),
+                    };
+                    container.child(wrapper.child(child))
                 } else {
                     container.child(child)
                 };
@@ -184,6 +215,28 @@ fn render_view_node(
             }
             if t.bold == Some(true) {
                 el = el.font_weight(gpui::FontWeight::BOLD);
+            }
+            if t.italic == Some(true) {
+                el = el.italic();
+            }
+            // GPUI's TextAlign has no direction-aware Start/End of its own; Left/Right is the
+            // correct mapping for every language this shell currently ships in.
+            if let Some(align) = t.text_align {
+                el = el.text_align(match align {
+                    TextAlign::Start => gpui::TextAlign::Left,
+                    TextAlign::Center => gpui::TextAlign::Center,
+                    TextAlign::End => gpui::TextAlign::Right,
+                });
+            }
+            if let Some(line_height) = t.line_height {
+                el = el.line_height(px(line_height));
+            }
+            // Letter spacing has no equivalent in this GPUI fork yet -- accepted in the schema
+            // for forward compatibility, but silently a no-op here until upstream adds it.
+            match t.max_lines {
+                Some(1) => el = el.truncate(),
+                Some(lines) if lines > 1 => el = el.line_clamp(lines as usize),
+                _ => {}
             }
             el.into_any_element()
         }
@@ -451,8 +504,39 @@ fn apply_view_style(mut div: gpui::Div, style: &ViewStyle, cx: &App) -> gpui::Di
     if let Some(p) = style.padding {
         div = div.p(px(p));
     }
+    // Per-side overrides win over the uniform value on whichever sides they set -- a design
+    // that wants padding on three sides and a divider gap on the fourth shouldn't have to
+    // give up the uniform shorthand for the sides it doesn't care about.
+    if let Some(edges) = &style.padding_edges {
+        if let Some(top) = edges.top {
+            div = div.pt(px(top));
+        }
+        if let Some(right) = edges.right {
+            div = div.pr(px(right));
+        }
+        if let Some(bottom) = edges.bottom {
+            div = div.pb(px(bottom));
+        }
+        if let Some(left) = edges.left {
+            div = div.pl(px(left));
+        }
+    }
     if let Some(m) = style.margin {
         div = div.m(px(m));
+    }
+    if let Some(edges) = &style.margin_edges {
+        if let Some(top) = edges.top {
+            div = div.mt(px(top));
+        }
+        if let Some(right) = edges.right {
+            div = div.mr(px(right));
+        }
+        if let Some(bottom) = edges.bottom {
+            div = div.mb(px(bottom));
+        }
+        if let Some(left) = edges.left {
+            div = div.ml(px(left));
+        }
     }
     if let Some(w) = style.width {
         div = div.w(px(w));
@@ -463,6 +547,20 @@ fn apply_view_style(mut div: gpui::Div, style: &ViewStyle, cx: &App) -> gpui::Di
     if let Some(r) = style.corner_radius {
         div = div.rounded(px(r));
     }
+    if let Some(radii) = &style.corner_radii {
+        if let Some(v) = radii.top_left {
+            div = div.rounded_tl(px(v));
+        }
+        if let Some(v) = radii.top_right {
+            div = div.rounded_tr(px(v));
+        }
+        if let Some(v) = radii.bottom_left {
+            div = div.rounded_bl(px(v));
+        }
+        if let Some(v) = radii.bottom_right {
+            div = div.rounded_br(px(v));
+        }
+    }
     if let Some(o) = style.opacity {
         div = div.opacity(o);
     }
@@ -472,8 +570,8 @@ fn apply_view_style(mut div: gpui::Div, style: &ViewStyle, cx: &App) -> gpui::Di
     if let Some(c) = style.color {
         div = div.text_color(resolve_color_token(c, cx));
     }
-    if let Some(bg) = style.background {
-        div = div.bg(resolve_color_token(bg, cx));
+    if let Some(fill) = &style.background {
+        div = apply_fill(div, fill, cx);
     }
     if let Some(bw) = style.border_width
         && bw > 0.0
@@ -485,6 +583,45 @@ fn apply_view_style(mut div: gpui::Div, style: &ViewStyle, cx: &App) -> gpui::Di
         div.style().border_widths.right = Some(width);
         let color_token = style.border_color.unwrap_or(SemanticColorToken::Outline);
         div = div.border_color(resolve_color_token(color_token, cx));
+    }
+    // Per-side border widths, layered on top of the uniform width above -- a bottom-only
+    // divider is a real, common case a single uniform border_width can't express.
+    if let Some(edges) = &style.border_edges {
+        let color_token = style.border_color.unwrap_or(SemanticColorToken::Outline);
+        if edges.top.is_some() || edges.right.is_some() || edges.bottom.is_some() || edges.left.is_some() {
+            div = div.border_color(resolve_color_token(color_token, cx));
+        }
+        if let Some(top) = edges.top {
+            div.style().border_widths.top = Some(px(top).into());
+        }
+        if let Some(right) = edges.right {
+            div.style().border_widths.right = Some(px(right).into());
+        }
+        if let Some(bottom) = edges.bottom {
+            div.style().border_widths.bottom = Some(px(bottom).into());
+        }
+        if let Some(left) = edges.left {
+            div.style().border_widths.left = Some(px(left).into());
+        }
+    }
+    if let Some(shadows) = &style.shadows
+        && !shadows.is_empty()
+    {
+        div.style().box_shadow = Some(
+            shadows
+                .iter()
+                .map(|shadow| gpui::BoxShadow {
+                    color: resolve_color_token(shadow.color, cx),
+                    offset: gpui::Point {
+                        x: px(shadow.offset_x),
+                        y: px(shadow.offset_y),
+                    },
+                    blur_radius: px(shadow.blur_radius),
+                    spread_radius: px(shadow.spread_radius),
+                    inset: shadow.inset,
+                })
+                .collect(),
+        );
     }
     if let Some(min_w) = style.min_width {
         div = div.min_w(px(min_w));
@@ -508,6 +645,17 @@ fn apply_view_style(mut div: gpui::Div, style: &ViewStyle, cx: &App) -> gpui::Di
         div.style().overflow.y = Some(y);
     }
     div
+}
+
+fn apply_fill(div: gpui::Div, fill: &Fill, cx: &App) -> gpui::Div {
+    match fill {
+        Fill::Solid { color } => div.bg(resolve_color_token(*color, cx)),
+        Fill::LinearGradient { angle, from, to } => div.bg(gpui::linear_gradient(
+            *angle,
+            gpui::linear_color_stop(resolve_color_token(*from, cx), 0.0),
+            gpui::linear_color_stop(resolve_color_token(*to, cx), 1.0),
+        )),
+    }
 }
 
 fn resolve_color_token(token: SemanticColorToken, cx: &App) -> gpui::Hsla {
@@ -575,13 +723,13 @@ pub fn create_showcase_view_tree() -> ViewTree {
                 content: "Grid Item 1".into(),
                 font_size: Some(14.0),
                 bold: Some(true),
-                style: None,
+                ..Default::default()
             }),
             ViewNode::Text(TextNode {
                 content: "Grid Item 2".into(),
                 font_size: Some(14.0),
                 bold: None,
-                style: None,
+                ..Default::default()
             }),
             ViewNode::Button(ButtonNode {
                 label: "Nested Button".into(),
@@ -609,7 +757,7 @@ pub fn create_showcase_view_tree() -> ViewTree {
                 content: "Flex Row Item".into(),
                 font_size: None,
                 bold: None,
-                style: None,
+                ..Default::default()
             }),
             ViewNode::Badge(BadgeNode {
                 label: "Wrap Badge".into(),
@@ -640,13 +788,13 @@ pub fn create_showcase_view_tree() -> ViewTree {
                 content: "Stack Background".into(),
                 font_size: None,
                 bold: None,
-                style: None,
+                ..Default::default()
             }),
             ViewNode::Text(TextNode {
                 content: "Stack Foreground".into(),
                 font_size: None,
                 bold: Some(true),
-                style: None,
+                ..Default::default()
             }),
         ],
         style: Some(ViewStyle {
@@ -919,15 +1067,39 @@ mod tests {
                 corner_radius: Some(6.0),
                 opacity: Some(0.9),
                 color: Some(SemanticColorToken::Primary),
-                background: Some(SemanticColorToken::Surface),
+                background: Some(Fill::Solid {
+                    color: SemanticColorToken::Surface,
+                }),
                 flex_grow: Some(1.0),
                 border_width: Some(1.5),
                 border_color: Some(SemanticColorToken::Outline),
+                shadows: Some(vec![ShadowStyle {
+                    color: SemanticColorToken::Shadow,
+                    offset_x: 0.0,
+                    offset_y: 2.0,
+                    blur_radius: 8.0,
+                    spread_radius: 0.0,
+                    inset: false,
+                }]),
                 min_width: Some(100.0),
                 max_width: Some(400.0),
                 min_height: Some(50.0),
                 max_height: Some(300.0),
                 overflow: Some(Overflow::Scroll),
+                padding_edges: Some(EdgeInsets {
+                    top: Some(1.0),
+                    right: Some(2.0),
+                    bottom: Some(3.0),
+                    left: Some(4.0),
+                }),
+                margin_edges: None,
+                corner_radii: Some(CornerRadii {
+                    top_left: Some(10.0),
+                    top_right: Some(20.0),
+                    bottom_left: Some(30.0),
+                    bottom_right: Some(40.0),
+                }),
+                border_edges: None,
             }),
             gap: Some(12.0),
             align_items: Some(Alignment::Center),
@@ -954,16 +1126,40 @@ mod tests {
             style_desc,
             StyleDescriptor {
                 padding: Some(8.0),
+                padding_edges: Some(EdgeInsets {
+                    top: Some(1.0),
+                    right: Some(2.0),
+                    bottom: Some(3.0),
+                    left: Some(4.0),
+                }),
                 margin: Some(4.0),
+                margin_edges: None,
                 width: Some(200.0),
                 height: Some(100.0),
                 corner_radius: Some(6.0),
+                corner_radii: Some(CornerRadii {
+                    top_left: Some(10.0),
+                    top_right: Some(20.0),
+                    bottom_left: Some(30.0),
+                    bottom_right: Some(40.0),
+                }),
                 opacity: Some(0.9),
                 color: Some(SemanticColorToken::Primary),
-                background: Some(SemanticColorToken::Surface),
+                background: Some(Fill::Solid {
+                    color: SemanticColorToken::Surface,
+                }),
                 flex_grow: Some(1.0),
                 border_width: Some(1.5),
+                border_edges: None,
                 border_color: Some(SemanticColorToken::Outline),
+                shadows: Some(vec![ShadowStyle {
+                    color: SemanticColorToken::Shadow,
+                    offset_x: 0.0,
+                    offset_y: 2.0,
+                    blur_radius: 8.0,
+                    spread_radius: 0.0,
+                    inset: false,
+                }]),
                 min_width: Some(100.0),
                 max_width: Some(400.0),
                 min_height: Some(50.0),

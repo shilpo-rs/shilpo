@@ -336,6 +336,26 @@ interface view {
         scroll,
     }
 
+    enum text-align {
+        start,
+        center,
+        end,
+    }
+
+    record edge-insets {
+        top: option<f32>,
+        right: option<f32>,
+        bottom: option<f32>,
+        left: option<f32>,
+    }
+
+    record corner-radii {
+        top-left: option<f32>,
+        top-right: option<f32>,
+        bottom-left: option<f32>,
+        bottom-right: option<f32>,
+    }
+
     enum semantic-color-token {
         surface,
         on-surface,
@@ -386,18 +406,43 @@ interface view {
         on-error-container,
     }
 
+    record linear-gradient {
+        angle: f32,
+        start-color: semantic-color-token,
+        end-color: semantic-color-token,
+    }
+
+    variant fill {
+        solid(semantic-color-token),
+        linear-gradient(linear-gradient),
+    }
+
+    record shadow-style {
+        color: semantic-color-token,
+        offset-x: f32,
+        offset-y: f32,
+        blur-radius: f32,
+        spread-radius: f32,
+        inset: bool,
+    }
+
     record view-style {
         padding: option<f32>,
+        padding-edges: option<edge-insets>,
         margin: option<f32>,
+        margin-edges: option<edge-insets>,
         width: option<f32>,
         height: option<f32>,
         corner-radius: option<f32>,
+        corner-radii: option<corner-radii>,
         opacity: option<f32>,
         color: option<semantic-color-token>,
-        background: option<semantic-color-token>,
+        background: option<fill>,
         flex-grow: option<f32>,
         border-width: option<f32>,
+        border-edges: option<edge-insets>,
         border-color: option<semantic-color-token>,
+        shadows: option<list<shadow-style>>,
         min-width: option<f32>,
         max-width: option<f32>,
         min-height: option<f32>,
@@ -438,6 +483,11 @@ interface view {
         content: string,
         font-size: option<f32>,
         bold: option<bool>,
+        italic: option<bool>,
+        text-align: option<text-align>,
+        line-height: option<f32>,
+        letter-spacing: option<f32>,
+        max-lines: option<u32>,
         style: option<view-style>,
     }
 

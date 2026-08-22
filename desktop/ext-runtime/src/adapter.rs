@@ -215,9 +215,7 @@ impl ExtensionRuntime for InMemoryRuntime {
             fn view(&self, _contribution_id: &str) -> Option<ViewTree> {
                 Some(ViewTree::new(ViewNode::Text(TextNode {
                     content: "dummy".into(),
-                    font_size: None,
-                    bold: None,
-                    style: None,
+                    ..Default::default()
                 })))
             }
         }
