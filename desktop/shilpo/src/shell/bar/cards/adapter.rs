@@ -934,9 +934,9 @@ impl CardCoordinator {
                         .card_coordinator
                         .providers
                         .get(&source_clone.owner)
-                        .map(|_| ());
+                        .cloned();
 
-                    if provider.is_some() {
+                    if let Some(provider) = provider {
                         let content_source = source_clone.clone();
                         let ch = channel;
                         let content_box: super::provider::CardContentRenderFn =
@@ -968,11 +968,22 @@ impl CardCoordinator {
                             ),
                         }
 
-                        if channel == CardChannel::Persistent
-                            && let Some(ref handle) = band.focus_handle.clone()
-                        {
+                        // `activate_window()` and `handle.focus()` are NOT a package deal here:
+                        // `install_focus_loss_listener`'s auto-dismiss-on-blur watches
+                        // `window.is_window_active()`, so skipping activation entirely leaves a
+                        // freshly opened window that never became "active" in the first place --
+                        // its own blur listener reads that as an immediate loss and closes the
+                        // card within about a second of opening it. `handle.focus()` (moving
+                        // *keyboard* focus into the card) is the specific call responsible for
+                        // the bar's cursor styling going stale after a click, not activation, so
+                        // only that one is conditional on `needs_focus`.
+                        if channel == CardChannel::Persistent {
                             window.activate_window();
-                            handle.focus(window, cx);
+                            if provider.capabilities().needs_focus
+                                && let Some(ref handle) = band.focus_handle.clone()
+                            {
+                                handle.focus(window, cx);
+                            }
                         }
                     }
                 }) {
@@ -1294,6 +1305,7 @@ mod tests {
                         capabilities: super::super::model::CardCapabilities {
                             hover: true,
                             click: true,
+                            needs_focus: true,
                         },
                     }),
                 );
@@ -1315,6 +1327,7 @@ mod tests {
                     capabilities: super::super::model::CardCapabilities {
                         hover: false,
                         click: true,
+                        needs_focus: true,
                     },
                 }),
             );
@@ -1657,6 +1670,7 @@ mod tests {
                         capabilities: super::super::model::CardCapabilities {
                             hover: false,
                             click: true,
+                            needs_focus: false,
                         },
                     }),
                     menu_id,

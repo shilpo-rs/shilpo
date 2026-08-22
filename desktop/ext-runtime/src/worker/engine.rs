@@ -220,12 +220,6 @@ impl<R: ExtensionRuntime> ExtensionSession<R> {
         match event {
             ExtensionEvent::Input {
                 contribution_id, ..
-            }
-            | ExtensionEvent::BarMenuOpened {
-                contribution_id, ..
-            }
-            | ExtensionEvent::BarMenuClosed {
-                contribution_id, ..
             } => {
                 let Ok(canonical) = contribution_id.parse::<CanonicalId>() else {
                     return;
@@ -234,6 +228,24 @@ impl<R: ExtensionRuntime> ExtensionSession<R> {
                     return;
                 }
                 self.refresh_view(&canonical, changes);
+            }
+            // Unlike `Input`, whose effect is normally localized to the specific
+            // contribution the interactive element belongs to, a menu opening or closing
+            // can plausibly change how a *different* contribution renders -- e.g. a bar
+            // widget that wants to show an "active" appearance while its own menu is open.
+            // There's no way to know from the event alone which other views (if any) care,
+            // so -- same reasoning as the catch-all branch below -- refresh everything this
+            // extension owns rather than assume only the menu's own view is affected.
+            ExtensionEvent::BarMenuOpened { .. } | ExtensionEvent::BarMenuClosed { .. } => {
+                let owned: Vec<CanonicalId> = self
+                    .views
+                    .keys()
+                    .filter(|canonical| &canonical.extension_id == extension_id)
+                    .cloned()
+                    .collect();
+                for canonical in owned {
+                    self.refresh_view(&canonical, changes);
+                }
             }
             _ => {
                 let owned: Vec<CanonicalId> = self
@@ -1871,7 +1883,62 @@ mod tests {
             instance_id: "bar:display-1:weather".into(),
         });
 
+        // `MenuGuest::view()` only ever produces content for "weather-menu" (its "weather"
+        // bar-widget contribution has none), so broadening the refresh to every view this
+        // extension owns -- rather than just the menu's own -- still only actually
+        // invalidates the one view that renders to anything. The real point of this test is
+        // that the unrelated "second" extension is untouched.
         assert_eq!(changes.invalidated_views, vec![target]);
+    }
+
+    struct BothViewsGuest;
+    impl GuestExtension for BothViewsGuest {
+        fn on_event(&mut self, _event: &ExtensionEvent) -> Vec<HostOperation> {
+            Vec::new()
+        }
+
+        fn view(&self, contribution_id: &str) -> Option<ViewTree> {
+            Some(ViewTree::new(shilpo_ext_api::ViewNode::Text(
+                shilpo_ext_api::TextNode {
+                    content: contribution_id.to_owned(),
+                    style: None,
+                    font_size: None,
+                    bold: None,
+                },
+            )))
+        }
+    }
+
+    #[test]
+    fn bar_menu_opened_also_refreshes_sibling_contributions_of_the_same_extension() {
+        let mut session = ExtensionSession::new(InMemoryRuntime::new());
+        let manifest = menu_manifest("io.github.test.weather");
+        session
+            .register(
+                manifest.clone(),
+                Box::new(BothViewsGuest),
+                manifest.capabilities.clone(),
+            )
+            .unwrap();
+
+        let menu = CanonicalId::new(
+            manifest.id.clone(),
+            shilpo_ext_api::ContributionId::new("weather-menu").unwrap(),
+        );
+        let widget = CanonicalId::new(
+            manifest.id,
+            shilpo_ext_api::ContributionId::new("weather").unwrap(),
+        );
+        let changes = session.dispatch(&ExtensionEvent::BarMenuOpened {
+            contribution_id: menu.to_string(),
+            instance_id: "bar:display-1:weather".into(),
+        });
+
+        let mut invalidated = changes.invalidated_views;
+        invalidated.sort_by_key(ToString::to_string);
+        let mut expected = vec![menu, widget];
+        expected.sort_by_key(ToString::to_string);
+        assert_eq!(invalidated, expected);
     }
 
     struct StatefulMenuGuest {

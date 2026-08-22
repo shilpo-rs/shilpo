@@ -81,6 +81,7 @@ impl CardProvider for WorkspacePreviewProvider {
         CardCapabilities {
             hover: true,
             click: false,
+            needs_focus: true,
         }
     }
 

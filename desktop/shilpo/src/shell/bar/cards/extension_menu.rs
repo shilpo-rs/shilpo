@@ -75,6 +75,14 @@ impl CardProvider for ExtensionMenuCardProvider {
         CardCapabilities {
             hover: false,
             click: true,
+            // Extension bar-menu views have no way to declare or contain a focusable
+            // element (the ViewNode contract has no TextInput usage in practice today,
+            // and even if it did, there'd be no signal here to detect it from). Grabbing
+            // keyboard focus that nothing inside the card can use only costs an unwanted
+            // side effect: the bar's own cursor styling goes stale until the next real
+            // mouse move, because moving focus is what causes it, not window activation
+            // (which is a pure no-op for layer-shell surfaces on Wayland).
+            needs_focus: false,
         }
     }
 
@@ -158,8 +166,8 @@ impl CardProvider for ExtensionMenuCardProvider {
         }
         let content = container.child(element).into_any_element();
         let measured = Size {
-            width: intrinsic.width.min(max_width) + px(32.0),
-            height: intrinsic.height.min(max_height) + px(32.0),
+            width: intrinsic.width.min(max_width),
+            height: intrinsic.height.min(max_height),
         };
         if update_cached_measurement(&self.measured_size, measured) {
             // `Window::defer` wraps its callback in `handle.update(cx, ...)` on *this same*

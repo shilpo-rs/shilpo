@@ -39,6 +39,7 @@ impl CardProvider for BatteryCardProvider {
         CardCapabilities {
             hover: false,
             click: true,
+            needs_focus: true,
         }
     }
 

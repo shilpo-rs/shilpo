@@ -123,6 +123,15 @@ pub struct CardCapabilities {
     pub hover: bool,
     /// Widget participates in persistent-click.
     pub click: bool,
+    /// Whether opening this card as a persistent channel should capture keyboard focus.
+    /// A card with no focusable content (no text input) has nothing to gain from grabbing
+    /// focus, and doing so anyway has a real cost: moving keyboard/activation focus away
+    /// from the bar without an accompanying pointer-move event leaves the bar's own cursor
+    /// styling stuck until the next real mouse movement recomputes it, which reads as the
+    /// pointer icon getting stuck on "default" right after a click. Cards that do need
+    /// focus (anything with a `TextInput`, or that wants Escape-to-dismiss/click-outside
+    /// semantics with actual keyboard interaction inside) should set this `true`.
+    pub needs_focus: bool,
 }
 
 /// Maximum logical-pixel card dimensions per tier.
