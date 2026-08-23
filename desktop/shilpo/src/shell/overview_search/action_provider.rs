@@ -6,6 +6,7 @@ use std::{
 use shilpo_m3e::IconName;
 
 use super::{
+    activation_cache::ActivationCache,
     parser::SearchMode,
     sink::SearchSink,
     types::{
@@ -19,7 +20,7 @@ use crate::actions::ActionDescriptor;
 #[derive(Clone)]
 pub struct ActionSearchProvider {
     actions: Vec<ActionDescriptor>,
-    cached_actions: Arc<Mutex<HashMap<String, ActionDescriptor>>>,
+    cached_actions: Arc<Mutex<ActivationCache<ActionDescriptor>>>,
 }
 
 impl ActionSearchProvider {
@@ -27,7 +28,7 @@ impl ActionSearchProvider {
     pub fn new(actions: Vec<ActionDescriptor>) -> Self {
         Self {
             actions,
-            cached_actions: Arc::new(Mutex::new(HashMap::new())),
+            cached_actions: Arc::new(Mutex::new(ActivationCache::default())),
         }
     }
 }
@@ -51,7 +52,7 @@ impl SearchProvider for ActionSearchProvider {
     fn search(&self, request: SearchRequest, sink: SearchSink) {
         let query_generation = request.generation;
         let provider_id = self.id();
-        let mut cached = self.cached_actions.lock().unwrap();
+        let mut next_cache = HashMap::new();
 
         for action in &self.actions {
             // Actions requiring user input (e.g. text or number arguments) are excluded from
@@ -63,8 +64,8 @@ impl SearchProvider for ActionSearchProvider {
             }
 
             let canonical_id = format!("action:{}", action.id);
-            let act_key = format!("action:{query_generation}:{canonical_id}");
-            cached.insert(act_key.clone(), action.clone());
+            let act_key = canonical_id.clone();
+            next_cache.insert(act_key.clone(), action.clone());
 
             let candidate = SearchCandidate {
                 provider_id: provider_id.clone(),
@@ -85,6 +86,11 @@ impl SearchProvider for ActionSearchProvider {
 
             sink.push(candidate);
         }
+
+        self.cached_actions
+            .lock()
+            .unwrap()
+            .replace(query_generation, next_cache);
     }
 
     fn activate(&self, activation: SearchActivation) -> Result<ActionResult, SearchError> {
@@ -92,8 +98,7 @@ impl SearchProvider for ActionSearchProvider {
             .cached_actions
             .lock()
             .unwrap()
-            .get(&activation.payload)
-            .cloned()
+            .get_cloned(&activation.payload)
             .ok_or_else(|| SearchError::NotFound(activation.payload.clone()))?;
 
         Ok(ActionResult::InvokeAction(action))
@@ -198,5 +203,26 @@ mod tests {
             }
             other => panic!("expected InvokeAction, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_action_activation_cache_replaces_previous_generation() {
+        let provider = ActionSearchProvider::new(sample_actions());
+        let first_sink = SearchSink::new(1, SinkConfig::default());
+        provider.search(
+            SearchRequest::new("/toggle", SearchMode::Actions, "toggle", 1),
+            first_sink,
+        );
+        let second_sink = SearchSink::new(2, SinkConfig::default());
+        provider.search(
+            SearchRequest::new("/quit", SearchMode::Actions, "quit", 2),
+            second_sink.clone(),
+        );
+
+        assert_eq!(provider.cached_actions.lock().unwrap().len(), 2);
+        assert!(matches!(
+            provider.activate(second_sink.snapshot()[0].activation.clone()),
+            Ok(ActionResult::InvokeAction(_))
+        ));
     }
 }
