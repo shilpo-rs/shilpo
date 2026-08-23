@@ -65,10 +65,16 @@ impl IdleService {
         };
 
         let action_sink: Arc<dyn IdleActionSink> =
-            Arc::new(SystemIdleActionSink::new(None, lock_supervisor));
+            Arc::new(SystemIdleActionSink::new(None, lock_supervisor.clone()));
         let time_source: Arc<dyn TimeSource> = Arc::new(shilpo_domain::MonotonicTimeSource::new());
 
-        Self::with_components(backend, action_sink, time_source, event_rx)
+        Self::with_components_and_lock_supervisor(
+            backend,
+            action_sink,
+            time_source,
+            event_rx,
+            lock_supervisor,
+        )
     }
 
     /// Creates an offline `IdleService` for tests without live Wayland or D-Bus connections.
@@ -118,6 +124,22 @@ impl IdleService {
         time_source: Arc<dyn TimeSource>,
         event_rx: mpsc::UnboundedReceiver<IdleBackendEvent>,
     ) -> Self {
+        Self::with_components_and_lock_supervisor(
+            backend,
+            action_sink,
+            time_source,
+            event_rx,
+            LockSupervisor::new(),
+        )
+    }
+
+    fn with_components_and_lock_supervisor(
+        backend: Arc<dyn IdleNotifierBackend>,
+        action_sink: Arc<dyn IdleActionSink>,
+        time_source: Arc<dyn TimeSource>,
+        event_rx: mpsc::UnboundedReceiver<IdleBackendEvent>,
+        lock_supervisor: Arc<LockSupervisor>,
+    ) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let adapter = Arc::new(IdleDomainState::new(
             32,
@@ -132,7 +154,14 @@ impl IdleService {
             time_source: time_source.clone(),
         };
 
-        Self::spawn_supervisor(adapter, cmd_tx, cmd_rx, event_rx, time_source);
+        Self::spawn_supervisor(
+            adapter,
+            cmd_tx,
+            cmd_rx,
+            event_rx,
+            time_source,
+            lock_supervisor,
+        );
         service
     }
 
@@ -150,6 +179,7 @@ impl IdleService {
         mut cmd_rx: mpsc::UnboundedReceiver<IdleCommand>,
         mut event_rx: mpsc::UnboundedReceiver<IdleBackendEvent>,
         time_source: Arc<dyn TimeSource>,
+        lock_supervisor: Arc<LockSupervisor>,
     ) {
         tokio::spawn(async move {
             adapter.begin_start();
@@ -161,6 +191,14 @@ impl IdleService {
                 let server = ScreenSaverServer::new(
                     cmd_tx.clone(),
                     Arc::new(move || adapter_clone.snapshot().live_idle_seconds),
+                    {
+                        let lock_supervisor = lock_supervisor.clone();
+                        Arc::new(move || lock_supervisor.is_active())
+                    },
+                    {
+                        let lock_supervisor = lock_supervisor.clone();
+                        Arc::new(move || lock_supervisor.spawn("org.freedesktop.ScreenSaver.Lock"))
+                    },
                 );
 
                 let _ = conn
@@ -172,6 +210,14 @@ impl IdleService {
                 let server2 = ScreenSaverServer::new(
                     cmd_tx.clone(),
                     Arc::new(move || adapter_clone2.snapshot().live_idle_seconds),
+                    {
+                        let lock_supervisor = lock_supervisor.clone();
+                        Arc::new(move || lock_supervisor.is_active())
+                    },
+                    {
+                        let lock_supervisor = lock_supervisor.clone();
+                        Arc::new(move || lock_supervisor.spawn("org.freedesktop.ScreenSaver.Lock"))
+                    },
                 );
                 let _ = conn.object_server().at("/ScreenSaver", server2).await;
 
