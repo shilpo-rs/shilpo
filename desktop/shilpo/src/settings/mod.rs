@@ -526,13 +526,41 @@ pub async fn run_settings() {
 
     let theme_client = shilpo_theme_daemon::ThemeClient::new().await;
     let initial_theme_state = theme_client.current_state();
+    let config_path = crate::config::default_config_path();
+    let initial_config = crate::config::ConfigResolver::from_primary_path(&config_path)
+        .resolve_initial()
+        .map(|(snapshot, _)| snapshot.config)
+        .unwrap_or_default();
 
     let app = gpui_platform::application().with_assets(crate::Assets);
 
     app.run(move |cx: &mut App| {
         shilpo_m3e::init(cx);
+        crate::locale::ApplicationLocale::install(initial_config.locale.as_deref(), cx);
 
         shilpo_m3e::Theme::global_mut(cx).apply_state(&initial_theme_state);
+
+        let (mut config_rx, config_task) = crate::shell::bar::service_worker::spawn_config_updates(
+            cx.background_executor().clone(),
+            config_path.clone(),
+        );
+        config_task.detach();
+        cx.spawn(async move |cx| {
+            while let Some(update) = config_rx.recv().await {
+                if let crate::shell::bar::service_worker::ConfigUpdate::Loaded {
+                    config,
+                    changeset,
+                } = update
+                    && changeset.locale
+                {
+                    let locale = config.locale.clone();
+                    cx.update(|cx| {
+                        crate::locale::ApplicationLocale::apply_config(locale.as_deref(), cx);
+                    });
+                }
+            }
+        })
+        .detach();
 
         cx.activate(true);
 

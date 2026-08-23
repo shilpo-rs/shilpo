@@ -32,6 +32,7 @@ New ADR: copy [`TEMPLATE.md`](TEMPLATE.md), pick the next unused number, add a r
 | [0016](0016-wit-extension-contract.md)                    | Canonical WIT Extension Contract and Process Execution Removal          | Accepted |
 | [0017](0017-compositor-support-scope-and-backend-tiers.md) | Compositor Support Scope, Abstraction Boundary, and Backend Tiers       | Accepted |
 | [0018](0018-extension-registry-distribution.md)           | Extension Registry Distribution and Publication Trust                    | Accepted |
+| [0019](0019-application-locale-and-fluent.md)              | Product-Owned Application Locale and Fluent Translation                  | Accepted |
 
 ## Chains
 
@@ -43,3 +44,4 @@ Some ADRs build directly on an earlier one; read them in order for full context:
 - **Theme**: 0002 (crate split) → 0014 (animated transitions, built on the split)
 - **Extension host**: 0005 (process roles, defines the extension-host child) → 0016 (WIT contract for that child)
 - **Extension distribution**: 0016 (WIT contract and the trusted-script exclusion) → 0018 (registry, publication trust, and installation provenance)
+- **Application locale**: 0007 (transactional config) → 0009 (live config reload) → 0019 (locale resolution and translation refresh)

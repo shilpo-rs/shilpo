@@ -177,6 +177,7 @@ pub fn run_daemon() {
                 crate::config::ShellConfig::default()
             }
         };
+        crate::locale::ApplicationLocale::install(config.locale.as_deref(), cx);
         bar::view::apply_config_theme(&config, None, cx);
         cx.activate(true);
         ShellRuntime::install(

@@ -25,7 +25,8 @@ an exact revision of that repository (see the root `Cargo.toml`), not a local wo
 ### Linux Desktop (`desktop/`)
 
 - **Shilpo** (`desktop/shilpo`) — Consolidated desktop product package. Contains Shell daemon (`shell`), Settings app
-  (`settings`), public CLI dispatch (`cli`), and declarative TOML configuration/validation (`config`). Exposes the
+  (`settings`), public CLI dispatch (`cli`), declarative TOML configuration/validation (`config`), and the product-owned
+  application locale module (`locale`). Exposes the
   `org.shilpo.Shell` and `org.shilpo.Debug` D-Bus control plane
   ([ADR-0012](docs/adr/0012-dbus-shell-control-plane.md), [ADR-0013](docs/adr/0013-runtime-debug-control.md)). Produces
   the single installed executable binary target (`shilpo`).
@@ -56,7 +57,8 @@ on the extension runtime that also consumes `core/ext-api` — see "Relationship
 ## Relationships
 
 - **Shilpo → shilpo-m3e**: Shilpo renders Shell and Settings UI using M3 components from
-  [shilpo-rs/ui](https://github.com/shilpo-rs/ui).
+  [shilpo-rs/ui](https://github.com/shilpo-rs/ui), and projects its resolved application locale into M3's generic
+  component catalogue.
 - **Shilpo → Theme Daemon**: Shilpo subscribes to theme daemon for system-wide theme synchronization and runs the theme
   daemon role with narrow options.
 - **Shilpo → Services**: Shilpo wires system service data into presentational widgets via service worker channels.

@@ -36,6 +36,7 @@ zbus.workspace = true
 zvariant.workspace = true
 dirs.workspace = true
 futures-lite.workspace = true
+fluent-bundle.workspace = true
 chrono.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "process", "signal", "sync"] }
 log.workspace = true
@@ -56,6 +57,7 @@ fasteval = "0.2"
 toml.workspace = true
 toml_edit = "0.25"
 schemars.workspace = true
+unic-langid.workspace = true
 
 [dev-dependencies]
 criterion = { workspace = true }
