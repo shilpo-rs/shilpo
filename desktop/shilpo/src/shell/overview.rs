@@ -490,33 +490,6 @@ impl WorkspaceOverview {
                     });
                 }
             });
-
-            let sink = SearchSink::with_default_config(query_gen);
-            if let Some(coordinator) = &coordinator {
-                let bg_sink = sink.clone();
-                let bg_text = text.clone();
-                let coordinator = coordinator.clone();
-                cx.background_executor()
-                    .spawn(async move {
-                        let summary = coordinator.search(&bg_text, query_gen, &bg_sink);
-                        if summary.has_timed_out() {
-                            tracing::warn!(
-                                providers = ?summary.timed_out_providers,
-                                "search providers timed out"
-                            );
-                        }
-                    })
-                    .await;
-            }
-            cx.update(|cx| {
-                if let Some(entity) = this.upgrade() {
-                    entity.update(cx, |view, cx| {
-                        if view.query_generation == query_gen {
-                            view.set_search_results(sink.snapshot(), query_gen, cx);
-                        }
-                    });
-                }
-            });
         });
         self._search_task = Some(task);
     }
@@ -1753,9 +1726,79 @@ fn char_positions_to_byte_ranges(text: &str, char_positions: &[usize]) -> Vec<Ra
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use gpui::TestAppContext;
     use shilpo_services::Application;
 
     use super::*;
+    use crate::shell::overview_search::{
+        ActionResult, ProviderId, ResultCategory, SearchActivation, SearchError, SearchProvider,
+        SearchRequest,
+    };
+
+    struct CountingSearchProvider {
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl SearchProvider for CountingSearchProvider {
+        fn id(&self) -> ProviderId {
+            ProviderId::from_static("counting-search")
+        }
+
+        fn declared_modes(&self) -> Cow<'static, [crate::shell::overview_search::SearchMode]> {
+            Cow::Owned(vec![crate::shell::overview_search::SearchMode::Default])
+        }
+
+        fn search(&self, request: SearchRequest, sink: SearchSink) {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            sink.push(SearchCandidate::new(
+                self.id(),
+                "counting:result",
+                request.generation,
+                "Result",
+                None,
+                ResultCategory::Custom,
+                SearchResultIcon::Named(IconName::Search),
+                "Open",
+                SearchActivation::new("counting:result"),
+            ));
+        }
+
+        fn activate(&self, _activation: SearchActivation) -> Result<ActionResult, SearchError> {
+            Ok(ActionResult::Handled {
+                close_overview: true,
+            })
+        }
+    }
+
+    #[gpui::test]
+    fn update_search_fans_out_to_each_provider_once(cx: &mut TestAppContext) {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider = Arc::new(CountingSearchProvider {
+            calls: calls.clone(),
+        });
+        let overview = cx.update(|app| {
+            app.new(|_| {
+                let mut overview = WorkspaceOverview::new_offline();
+                overview.search = Some(Arc::new(SearchCoordinator::new(vec![provider])));
+                overview
+            })
+        });
+
+        cx.update(|app| {
+            overview.update(app, |overview, cx| {
+                overview.update_search("result".to_string(), cx);
+            });
+        });
+        cx.run_until_parked();
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        cx.update(|app| {
+            assert_eq!(overview.read(app).search_results.len(), 1);
+        });
+    }
 
     #[test]
     fn test_workspace_overview_navigation() {
