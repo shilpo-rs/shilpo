@@ -109,6 +109,13 @@ else
   pass "/usr/share/wayland-sessions/niri.desktop verification skipped (system path)"
 fi
 
+# 7. Cross-repository pin verifier fixtures
+if PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.test_verify_cross_repo_pins; then
+  pass "Cross-repository pin verifier fixture tests"
+else
+  fail "Cross-repository pin verifier fixture tests failed"
+fi
+
 printf '\n==================================================\n'
 printf 'Static Checks Summary: %d Passed, %d Failed\n' "$PASSED" "$FAILED"
 printf '==================================================\n'

@@ -4,6 +4,9 @@ This file records dependency upgrades that can require maintainer attention beyo
 dependencies in manifests use major-only requirements for stable `1.x` and later releases, and `0.x` requirements retain
 the compatible minor line. Git dependencies are intentionally excluded from dependency refreshes.
 
+Exact Git revisions shared across the UI, Shilpo, SDK, and extensions repositories follow the
+[cross-repository pin promotion runbook](cross-repository-pin-promotion.md).
+
 ## Current major-line migrations
 
 `fake`, `rand`, and `syn` upgrade notes (storybook, and the shared proc-macro crate) moved to
