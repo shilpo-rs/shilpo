@@ -24,16 +24,18 @@ printf '==================================================\n'
 printf 'Running Shilpo Static Checks & Validations\n'
 printf '==================================================\n\n'
 
+shell_files=(setup scripts/dev-shell scripts/*.sh tests/*.sh)
+
 # 1. Bash Syntax Check
-if bash -n setup scripts/install/*.sh tests/test_installer.sh; then
-  pass "Bash syntax validation on all installer scripts"
+if bash -n "${shell_files[@]}"; then
+  pass "Bash syntax validation on repository scripts"
 else
-  fail "Bash syntax error detected in installer scripts"
+  fail "Bash syntax error detected in repository scripts"
 fi
 
 # 2. ShellCheck Validation
 if command -v shellcheck >/dev/null 2>&1; then
-  if shellcheck setup scripts/install/*.sh tests/test_installer.sh; then
+  if shellcheck -x "${shell_files[@]}"; then
     pass "ShellCheck static analysis passed with zero warnings"
   else
     fail "ShellCheck static analysis reported warnings/errors"

@@ -588,7 +588,11 @@ fn apply_view_style(mut div: gpui::Div, style: &ViewStyle, cx: &App) -> gpui::Di
     // divider is a real, common case a single uniform border_width can't express.
     if let Some(edges) = &style.border_edges {
         let color_token = style.border_color.unwrap_or(SemanticColorToken::Outline);
-        if edges.top.is_some() || edges.right.is_some() || edges.bottom.is_some() || edges.left.is_some() {
+        if edges.top.is_some()
+            || edges.right.is_some()
+            || edges.bottom.is_some()
+            || edges.left.is_some()
+        {
             div = div.border_color(resolve_color_token(color_token, cx));
         }
         if let Some(top) = edges.top {

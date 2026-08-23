@@ -2,10 +2,6 @@
 set -euo pipefail
 
 SERVICE_NAME="shilpo-shell.service"
-RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-IPC_DIR="${RUNTIME_DIR}/shilpo-shell"
-SOCKET_PATH="${IPC_DIR}/ipc.sock"
-LOCK_PATH="${IPC_DIR}/instance.lock"
 
 WAS_ACTIVE=0
 if systemctl --user is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
@@ -29,21 +25,5 @@ if [ "$WAS_ACTIVE" -eq 1 ]; then
     systemctl --user stop "$SERVICE_NAME"
 fi
 
-echo "[dev-shell] Waiting for release instance IPC socket and lock to release..."
-TIMEOUT=50 # 5.0 seconds (50 * 100ms)
-COUNT=0
-while [ -e "$SOCKET_PATH" ] || {
-    [ -e "$LOCK_PATH" ] && ! flock -n "$LOCK_PATH" -c true;
-}; do
-    if [ "$COUNT" -ge "$TIMEOUT" ]; then
-        echo "[dev-shell] Error: Release instance failed to stop cleanly within timeout." >&2
-        echo "[dev-shell] IPC socket or lock file still exists at ${IPC_DIR}." >&2
-        echo "[dev-shell] Refusing to launch development instance." >&2
-        exit 1
-    fi
-    sleep 0.1
-    COUNT=$((COUNT + 1))
-done
-
 echo "[dev-shell] Release instance stopped cleanly. Starting development shell..."
-cargo run -p shilpo-cli -- daemon "$@"
+cargo run -p shilpo -- daemon "$@"

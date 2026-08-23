@@ -663,7 +663,10 @@ fn validate_nonnegative(field: &str, value: Option<f32>) -> Result<(), ViewValid
     Ok(())
 }
 
-fn validate_edge_insets(field: &str, insets: Option<&EdgeInsets>) -> Result<(), ViewValidationError> {
+fn validate_edge_insets(
+    field: &str,
+    insets: Option<&EdgeInsets>,
+) -> Result<(), ViewValidationError> {
     let Some(insets) = insets else {
         return Ok(());
     };

@@ -103,19 +103,15 @@ with `rtk`**.
 3. **Interactive Documentation**:
     - Core UI components (`shilpo-m3e`) and their interactive stories live in
       [shilpo-rs/ui](https://github.com/shilpo-rs/ui), not this repo. When a change here needs a new or modified
-      generic UI component, make that change there — storybook is strictly reserved for reusable core UI components,
-      not internal desktop shell widgets.
-    - **Full Event Handler Wiring**: Ensure all component interactive events (`on_click`, `on_index_change`,
-      `on_change`)
-      are explicitly wired in Storybook stories using `cx.entity().clone()` / `entity.update(cx, ...)` so all toggles,
-      slides, and selections are testable live.
+      generic UI component or Storybook coverage, make that change in the UI repository. Internal desktop shell widgets
+      remain in this repository and do not receive Storybook stories here.
 
 ---
 
 ## 5. Documentation Maintenance
 
-- Standard `README.md` files aimed at human developers must use standard `cargo` commands (e.g.,
-  `cargo run -p storybook`).
+- Standard `README.md` files aimed at human developers must use standard `cargo` commands (for example,
+  `cargo test --workspace`).
 - Do not add `rtk` prefixes to public `README.md` files; keep `rtk` instructions internal to `AGENTS.md` and agent
   workflows.
 
@@ -326,4 +322,3 @@ doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
 If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
 
 > _Contradicts ADR-0003 (event-sourced orders) — but worth reopening because…_
-

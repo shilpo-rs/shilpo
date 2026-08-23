@@ -171,7 +171,9 @@ fn authorize_geoclue() {
     println!("Authorizing shilpo for GeoClue location access...");
     let tmp = std::env::temp_dir().join("shilpo-geoclue-conf.tmp");
     if let Err(e) = fs::write(&tmp, CONTENT) {
-        eprintln!("warning: could not stage GeoClue config ({e}); Automatic location mode may not work");
+        eprintln!(
+            "warning: could not stage GeoClue config ({e}); Automatic location mode may not work"
+        );
         return;
     }
     let tmp_str = tmp.to_string_lossy().into_owned();

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-METADATA=$(rtk cargo metadata --no-deps --format-version 1)
+METADATA=$(cargo metadata --no-deps --format-version 1)
 
-# 1. Exact 8 package names in workspace metadata
+# 1. Exact package names in workspace metadata
 PACKAGES=$(echo "$METADATA" | jq -r '.packages[].name' | sort | uniq)
 PACKAGE_COUNT=$(echo "$PACKAGES" | wc -l)
 
-if [ "$PACKAGE_COUNT" -ne 8 ]; then
-  echo "ERROR: Expected 8 workspace packages, found $PACKAGE_COUNT:"
+if [ "$PACKAGE_COUNT" -ne 9 ]; then
+  echo "ERROR: Expected 9 workspace packages, found $PACKAGE_COUNT:"
   echo "$PACKAGES"
   exit 1
 fi
@@ -20,6 +20,7 @@ EXPECTED_PACKAGES=(
   "shilpo-ext-api"
   "shilpo-ext-runtime"
   "shilpo-observability"
+  "shilpo-registry-contract"
   "shilpo-services"
   "shilpo-theme-daemon"
 )

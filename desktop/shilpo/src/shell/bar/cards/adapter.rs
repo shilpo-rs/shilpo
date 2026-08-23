@@ -471,7 +471,13 @@ impl CardCoordinator {
                     }
                     .copied()
                 });
-                Self::schedule_close_completion(cx, channel, display_id, generation, closing_handle);
+                Self::schedule_close_completion(
+                    cx,
+                    channel,
+                    display_id,
+                    generation,
+                    closing_handle,
+                );
             }
 
             CardEffect::RepositionChannel { channel, source } => {
@@ -611,7 +617,13 @@ impl CardCoordinator {
                 .timer(super::band::ANIM_DURATION)
                 .await;
             cx.update(|cx| {
-                Self::clear_band_if_still_closing(cx, channel, display_id, generation, closing_handle);
+                Self::clear_band_if_still_closing(
+                    cx,
+                    channel,
+                    display_id,
+                    generation,
+                    closing_handle,
+                );
                 Self::dispatch(
                     cx,
                     CardRequest::CloseAnimationFinished {
@@ -661,7 +673,8 @@ impl CardCoordinator {
                 CardChannel::Persistent => &coordinator.state.persistent,
                 CardChannel::Preview => &coordinator.state.preview,
             };
-            slot.lifecycle == super::model::ChannelLifecycle::Closing && slot.generation == generation
+            slot.lifecycle == super::model::ChannelLifecycle::Closing
+                && slot.generation == generation
         };
 
         let mapped_handle = {
