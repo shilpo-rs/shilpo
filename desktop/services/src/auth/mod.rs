@@ -7,9 +7,10 @@ pub mod types;
 #[cfg(test)]
 mod tests;
 
+pub use crate::secret::zeroize_string;
 pub use helper::{
     AuthHelper, AuthHelperEvent, AuthHelperSession, MockAuthHelper, PAM_HELPER_ENV_VAR,
-    SystemAuthHelper, zeroize_string,
+    SystemAuthHelper,
 };
 pub use service::AuthService;
 pub use state::{AuthDomainState, DEFAULT_INACTIVITY_TIMEOUT_MS, SUCCESS_DISMISS_DELAY_MS};

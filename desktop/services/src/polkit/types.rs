@@ -9,6 +9,8 @@ pub use shilpo_domain::{
 };
 use tokio::sync::watch;
 
+use crate::secret::SecretString;
+
 /// Represents a candidate identity for authentication (e.g. a Unix user).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PolkitIdentity {
@@ -108,7 +110,7 @@ pub enum PolkitCommand {
     ProvideResponse {
         cookie: String,
         /// Response value. Note: when processed, this memory is zeroed immediately.
-        response: String,
+        response: SecretString,
     },
     /// User or authority explicit cancellation of the active request.
     Cancel { cookie: String },
@@ -276,7 +278,7 @@ pub trait PolkitPort: Send + Sync {
     fn provide_response(&self, cookie: &str, response: String) {
         let _ = self.submit_command(PolkitCommand::ProvideResponse {
             cookie: cookie.to_string(),
-            response,
+            response: response.into(),
         });
     }
 

@@ -21,23 +21,6 @@ pub enum HelperEvent {
     Failure,
 }
 
-/// Zeroizes the memory of a mutable byte slice securely.
-pub fn zeroize_bytes(slice: &mut [u8]) {
-    for byte in slice.iter_mut() {
-        unsafe {
-            std::ptr::write_volatile(byte, 0);
-        }
-    }
-    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
-}
-
-/// Zeroizes the memory backing a mutable `String` and clears it.
-pub fn zeroize_string(s: &mut String) {
-    let bytes = unsafe { s.as_bytes_mut() };
-    zeroize_bytes(bytes);
-    s.clear();
-}
-
 /// Abstraction for a running helper session.
 pub trait PolkitHelperSession: Send {
     /// Writes a user response (e.g. password) followed by newline to the helper's stdin.
