@@ -95,14 +95,7 @@ impl NiriShortcutBackend {
     }
 
     pub fn default_output_path() -> PathBuf {
-        let base = std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                dirs::home_dir()
-                    .unwrap_or_else(|| PathBuf::from("."))
-                    .join(".config")
-            });
-        base.join("shilpo")
+        crate::config::config_dir()
             .join("generated")
             .join("niri-keybindings.kdl")
     }
