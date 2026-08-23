@@ -27,6 +27,7 @@ pub fn wire_up_session() -> Result<(), String> {
     install_units()?;
     enable_network_and_bluetooth()?;
     enable_display_manager_if_none();
+    authorize_geoclue();
     set_login_shell_to_fish();
     prepare_xdg_dirs();
     Ok(())
@@ -143,6 +144,43 @@ fn enable_display_manager_if_none() {
         eprintln!(
             "warning: could not enable sddm.service ({e}); install a display manager and \
              enable it yourself, or start Niri from a TTY"
+        );
+    }
+}
+
+/// GeoClue denies location access to any app it doesn't already recognize unless a running
+/// **agent** (a D-Bus service implementing `org.freedesktop.GeoClue2.Agent`) prompts the user
+/// to approve it -- and GeoClue's agent whitelist only names agents shipped by GNOME,
+/// elementary, Phosh, and Lipstick. None of those run under Hyprland/Niri, so without this,
+/// every GeoClue-backed feature (the weather extension's "Automatic" location mode, and
+/// anything else built on it later) silently times out after 15 seconds with no fix, no
+/// matter how the user answers a permission prompt that never appears. Dropping shilpo into
+/// GeoClue's own `conf.d` override directory sidesteps the missing-agent problem entirely by
+/// pre-authorizing it, the same way distros pre-authorize their own shell.
+fn authorize_geoclue() {
+    const DEST: &str = "/etc/geoclue/conf.d/50-shilpo.conf";
+    const CONTENT: &str = "[shilpo]\nallowed=true\nsystem=false\nusers=\n";
+
+    if !Path::new("/etc/geoclue").is_dir() {
+        return;
+    }
+    if fs::read_to_string(DEST).ok().as_deref() == Some(CONTENT) {
+        return;
+    }
+
+    println!("Authorizing shilpo for GeoClue location access...");
+    let tmp = std::env::temp_dir().join("shilpo-geoclue-conf.tmp");
+    if let Err(e) = fs::write(&tmp, CONTENT) {
+        eprintln!("warning: could not stage GeoClue config ({e}); Automatic location mode may not work");
+        return;
+    }
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let result = run_privileged(&["install", "-Dm644", &tmp_str, DEST]);
+    let _ = fs::remove_file(&tmp);
+    if let Err(e) = result {
+        eprintln!(
+            "warning: could not authorize shilpo in GeoClue ({e}); Automatic location mode may \
+             not work -- add {DEST} manually, or use IP-based location in extensions that offer it"
         );
     }
 }
