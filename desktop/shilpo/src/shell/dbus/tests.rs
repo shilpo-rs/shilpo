@@ -693,9 +693,9 @@ async fn test_dev_session_start_reload_end_flow() {
     let harness = TestDbusHarness::new().await;
 
     // Set up a mock/real supervisor
-    let supervisor = crate::extensions::ExtensionSupervisor::new();
+    let supervisor = crate::shell::extensions::ExtensionSupervisor::new();
     let coordinator =
-        Arc::new(crate::extensions::ExtensionCoordinator::new_with_supervisor(supervisor));
+        Arc::new(crate::shell::extensions::ExtensionCoordinator::new_with_supervisor(supervisor));
     harness
         .shell_service
         .set_extension_coordinator(Some(coordinator));

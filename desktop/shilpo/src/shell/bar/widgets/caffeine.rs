@@ -26,6 +26,6 @@ impl Styled for CaffeineWidget {
 
 impl RenderOnce for CaffeineWidget {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        crate::widgets::CaffeineWidget::new(self.id, self.info.active).render(window, cx)
+        crate::shell::widgets::CaffeineWidget::new(self.id, self.info.active).render(window, cx)
     }
 }

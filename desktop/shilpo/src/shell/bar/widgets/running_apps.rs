@@ -9,11 +9,11 @@ use gpui::{
 use shilpo_m3e::{ActiveTheme, StyledExt};
 use shilpo_services::{CompositorSnapshot, WindowInfo};
 
-use crate::actions::ActionInvocation;
-use crate::bar::widgets::pill_strip::{
+use crate::shell::actions::ActionInvocation;
+use crate::shell::bar::widgets::pill_strip::{
     PILL_SLOT_SIZE, PillOrientation, render_active_pill_indicator,
 };
-use crate::{
+use crate::shell::{
     app_icons::{icon_device_pixels, rasterized_app_icon, resolve_app_icon_path},
     runtime::ShellRuntime,
 };

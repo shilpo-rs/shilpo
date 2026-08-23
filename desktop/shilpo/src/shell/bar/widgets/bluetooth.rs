@@ -26,7 +26,7 @@ impl Styled for BluetoothWidget {
 
 impl RenderOnce for BluetoothWidget {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        crate::widgets::BluetoothWidget::new(self.id, self.info.powered, self.info.connected)
+        crate::shell::widgets::BluetoothWidget::new(self.id, self.info.powered, self.info.connected)
             .render(window, cx)
     }
 }

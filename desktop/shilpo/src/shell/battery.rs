@@ -5,7 +5,7 @@ use gpui::{
 use shilpo_m3e::{ActiveTheme, Icon, IconName, StyledExt, black, green_500, h_flex};
 use shilpo_services::BatteryInfo;
 
-use crate::bar::cards::{
+use crate::shell::bar::cards::{
     adapter::CardCoordinator,
     model::{CardRequest, CardSourceId, CardSourceState},
 };

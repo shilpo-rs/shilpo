@@ -3,11 +3,11 @@
 use gpui::App;
 
 use super::{ShellRuntime, ShellSurfaces};
-use crate::{
+use crate::shell::{
     actions::ActionInvocation,
     bar::service_worker::{self, WorkerCommand},
+    dbus::{ShellCommand, ShellStatus, ShellTelemetry},
     error::ShellError,
-    shell::dbus::{ShellCommand, ShellStatus, ShellTelemetry},
 };
 
 impl ShellRuntime {
@@ -118,10 +118,11 @@ impl ShellRuntime {
             ShellCommand::InvokeAction {
                 action_id,
                 payload_json,
-            } => match action_id.parse::<crate::actions::ActionId>() {
+            } => match action_id.parse::<crate::shell::actions::ActionId>() {
                 Ok(id) => {
                     let payload = payload_json.and_then(|p| serde_json::from_str(&p).ok());
-                    match crate::actions::ActionInvocation::from_id_and_payload(id, payload) {
+                    match crate::shell::actions::ActionInvocation::from_id_and_payload(id, payload)
+                    {
                         Ok(invocation) => {
                             if let Err(error) = ShellRuntime::dispatch_action(cx, invocation) {
                                 tracing::warn!(%error, "D-Bus action dispatch failed");

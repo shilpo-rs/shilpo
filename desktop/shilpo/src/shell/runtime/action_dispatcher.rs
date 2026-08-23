@@ -3,7 +3,7 @@ use shilpo_ext_api::CanonicalId;
 use shilpo_services::{CompositorCommand, CompositorSnapshot, Notification};
 
 use super::{ShellRuntime, ShellSurfaces, shell_surfaces::SurfaceRequest};
-use crate::{
+use crate::shell::{
     actions::{ActionDescriptor, ActionId, ActionInvocation, ActionRegistry},
     error::ShellError,
     extensions::ContributionDescriptor,
@@ -16,7 +16,7 @@ use crate::{
 /// dispatcher exclusively through the method surface below.
 pub struct ActionDispatcher {
     actions: ActionRegistry,
-    keybindings: crate::actions::KeybindingManager,
+    keybindings: crate::shell::actions::KeybindingManager,
 }
 
 impl ActionDispatcher {
@@ -24,11 +24,11 @@ impl ActionDispatcher {
     pub fn new() -> Self {
         Self {
             actions: ActionRegistry::default(),
-            keybindings: crate::actions::KeybindingManager::with_defaults(),
+            keybindings: crate::shell::actions::KeybindingManager::with_defaults(),
         }
     }
 
-    pub(crate) fn keybinding_manager(&self) -> &crate::actions::KeybindingManager {
+    pub(crate) fn keybinding_manager(&self) -> &crate::shell::actions::KeybindingManager {
         &self.keybindings
     }
 
@@ -36,7 +36,7 @@ impl ActionDispatcher {
         &mut self,
         user_bindings: &[crate::config::KeybindingConfig],
         extension_shortcuts: &[ContributionDescriptor],
-    ) -> crate::actions::KeybindingReconciliationReport {
+    ) -> crate::shell::actions::KeybindingReconciliationReport {
         let builtin_actions = self.actions.all();
         self.keybindings
             .reconcile(user_bindings, &builtin_actions, extension_shortcuts)
@@ -126,8 +126,8 @@ impl ActionDispatcher {
         action: ActionInvocation,
     ) -> Result<(), ShellError> {
         match Self::dispatch_invocation(cx, action) {
-            Ok(crate::actions::ActionResult::Immediate) => Ok(()),
-            Ok(crate::actions::ActionResult::Compositor(ticket)) => {
+            Ok(crate::shell::actions::ActionResult::Immediate) => Ok(()),
+            Ok(crate::shell::actions::ActionResult::Compositor(ticket)) => {
                 cx.spawn(async move |cx| match ticket.await {
                     shilpo_services::CommandOutcome::Applied { version }
                     | shilpo_services::CommandOutcome::ReconciledApplied { version } => {
@@ -180,7 +180,7 @@ impl ActionDispatcher {
     pub(crate) fn dispatch_invocation(
         cx: &mut App,
         invocation: ActionInvocation,
-    ) -> Result<crate::actions::ActionResult, ShellError> {
+    ) -> Result<crate::shell::actions::ActionResult, ShellError> {
         let action_id = invocation.id();
         let (enabled, name) = {
             let dispatcher = cx.global::<ShellRuntime>().action_dispatcher();
@@ -205,19 +205,19 @@ impl ActionDispatcher {
         match invocation {
             ActionInvocation::ToggleBar => {
                 ShellSurfaces::request(cx, SurfaceRequest::ToggleBars);
-                Ok(crate::actions::ActionResult::Immediate)
+                Ok(crate::shell::actions::ActionResult::Immediate)
             }
             ActionInvocation::ToggleOverview => {
                 ShellSurfaces::request(cx, SurfaceRequest::ToggleOverview);
-                Ok(crate::actions::ActionResult::Immediate)
+                Ok(crate::shell::actions::ActionResult::Immediate)
             }
             ActionInvocation::ReloadConfig => {
                 ShellRuntime::reload_config(cx)?;
-                Ok(crate::actions::ActionResult::Immediate)
+                Ok(crate::shell::actions::ActionResult::Immediate)
             }
             ActionInvocation::Quit => {
                 ShellRuntime::shutdown(cx);
-                Ok(crate::actions::ActionResult::Immediate)
+                Ok(crate::shell::actions::ActionResult::Immediate)
             }
             ActionInvocation::FocusWorkspace(id) => {
                 let comp = ShellRuntime::compositor(cx)
@@ -226,7 +226,7 @@ impl ActionDispatcher {
                     .command_broker()
                     .submit(CompositorCommand::FocusWorkspace(id))
                     .map_err(|error| ShellError::ActionFailed(error.to_string()))?;
-                Ok(crate::actions::ActionResult::Compositor(ticket))
+                Ok(crate::shell::actions::ActionResult::Compositor(ticket))
             }
             ActionInvocation::FocusWindow(id) => {
                 let comp = ShellRuntime::compositor(cx)
@@ -235,7 +235,7 @@ impl ActionDispatcher {
                     .command_broker()
                     .submit(CompositorCommand::FocusWindow(id))
                     .map_err(|error| ShellError::ActionFailed(error.to_string()))?;
-                Ok(crate::actions::ActionResult::Compositor(ticket))
+                Ok(crate::shell::actions::ActionResult::Compositor(ticket))
             }
             ActionInvocation::CloseWindow(id) => {
                 let comp = ShellRuntime::compositor(cx)
@@ -244,7 +244,7 @@ impl ActionDispatcher {
                     .command_broker()
                     .submit(CompositorCommand::CloseWindow(id))
                     .map_err(|error| ShellError::ActionFailed(error.to_string()))?;
-                Ok(crate::actions::ActionResult::Compositor(ticket))
+                Ok(crate::shell::actions::ActionResult::Compositor(ticket))
             }
             ActionInvocation::CreateWorkspace => {
                 let comp = ShellRuntime::compositor(cx)
@@ -253,7 +253,7 @@ impl ActionDispatcher {
                     .command_broker()
                     .submit(CompositorCommand::CreateWorkspace)
                     .map_err(|error| ShellError::ActionFailed(error.to_string()))?;
-                Ok(crate::actions::ActionResult::Compositor(ticket))
+                Ok(crate::shell::actions::ActionResult::Compositor(ticket))
             }
             ActionInvocation::MoveWindowToWorkspace {
                 window_id,
@@ -268,7 +268,7 @@ impl ActionDispatcher {
                         workspace_id,
                     })
                     .map_err(|error| ShellError::ActionFailed(error.to_string()))?;
-                Ok(crate::actions::ActionResult::Compositor(ticket))
+                Ok(crate::shell::actions::ActionResult::Compositor(ticket))
             }
             ActionInvocation::VolumeUp => {
                 ShellRuntime::dispatch_device_command(
@@ -281,12 +281,12 @@ impl ActionDispatcher {
                 let target_vol = (info.volume + 5).min(100);
                 ShellSurfaces::request(
                     cx,
-                    SurfaceRequest::ShowOsd(crate::osd::OsdKind::Volume {
+                    SurfaceRequest::ShowOsd(crate::shell::osd::OsdKind::Volume {
                         level: target_vol as u32,
                         muted: info.is_muted,
                     }),
                 );
-                Ok(crate::actions::ActionResult::Immediate)
+                Ok(crate::shell::actions::ActionResult::Immediate)
             }
             ActionInvocation::VolumeDown => {
                 ShellRuntime::dispatch_device_command(
@@ -302,12 +302,12 @@ impl ActionDispatcher {
                 let target_vol = info.volume.saturating_sub(5);
                 ShellSurfaces::request(
                     cx,
-                    SurfaceRequest::ShowOsd(crate::osd::OsdKind::Volume {
+                    SurfaceRequest::ShowOsd(crate::shell::osd::OsdKind::Volume {
                         level: target_vol as u32,
                         muted: info.is_muted,
                     }),
                 );
-                Ok(crate::actions::ActionResult::Immediate)
+                Ok(crate::shell::actions::ActionResult::Immediate)
             }
             ActionInvocation::VolumeMute => {
                 ShellRuntime::dispatch_device_command(
@@ -317,12 +317,12 @@ impl ActionDispatcher {
                 let info = ShellRuntime::device_snapshot(cx).audio;
                 ShellSurfaces::request(
                     cx,
-                    SurfaceRequest::ShowOsd(crate::osd::OsdKind::Volume {
+                    SurfaceRequest::ShowOsd(crate::shell::osd::OsdKind::Volume {
                         level: info.volume as u32,
                         muted: !info.is_muted,
                     }),
                 );
-                Ok(crate::actions::ActionResult::Immediate)
+                Ok(crate::shell::actions::ActionResult::Immediate)
             }
             ActionInvocation::BrightnessUp => {
                 let info = ShellRuntime::device_snapshot(cx).brightness;
@@ -353,13 +353,13 @@ impl ActionDispatcher {
 
                 ShellSurfaces::request(
                     cx,
-                    SurfaceRequest::ShowOsd(crate::osd::OsdKind::Brightness {
+                    SurfaceRequest::ShowOsd(crate::shell::osd::OsdKind::Brightness {
                         level: target_pct,
                         display_name,
                         connector: connector_opt,
                     }),
                 );
-                Ok(crate::actions::ActionResult::Immediate)
+                Ok(crate::shell::actions::ActionResult::Immediate)
             }
             ActionInvocation::BrightnessDown => {
                 let info = ShellRuntime::device_snapshot(cx).brightness;
@@ -394,20 +394,20 @@ impl ActionDispatcher {
 
                 ShellSurfaces::request(
                     cx,
-                    SurfaceRequest::ShowOsd(crate::osd::OsdKind::Brightness {
+                    SurfaceRequest::ShowOsd(crate::shell::osd::OsdKind::Brightness {
                         level: target_pct,
                         display_name,
                         connector: connector_opt,
                     }),
                 );
-                Ok(crate::actions::ActionResult::Immediate)
+                Ok(crate::shell::actions::ActionResult::Immediate)
             }
             ActionInvocation::TakeScreenshot => {
                 ShellSurfaces::request(
                     cx,
                     SurfaceRequest::OpenCapture(shilpo_services::capture::CaptureIntent::Clipboard),
                 );
-                Ok(crate::actions::ActionResult::Immediate)
+                Ok(crate::shell::actions::ActionResult::Immediate)
             }
 
             ActionInvocation::Extension { id, payload } => {
@@ -417,7 +417,7 @@ impl ActionDispatcher {
                     )));
                 }
                 ShellRuntime::dispatch_extension_input(cx, &id, None, "invoke", payload);
-                Ok(crate::actions::ActionResult::Immediate)
+                Ok(crate::shell::actions::ActionResult::Immediate)
             }
         }
     }
@@ -457,7 +457,7 @@ impl ShellRuntime {
             .keybinding_descriptors()
     }
 
-    pub fn resolved_shortcuts(cx: &App) -> Vec<crate::actions::ResolvedShortcut> {
+    pub fn resolved_shortcuts(cx: &App) -> Vec<crate::shell::actions::ResolvedShortcut> {
         cx.global::<Self>()
             .action_dispatcher()
             .keybinding_manager()
@@ -476,7 +476,7 @@ impl ShellRuntime {
     pub fn dispatch_invocation(
         cx: &mut App,
         invocation: ActionInvocation,
-    ) -> Result<crate::actions::ActionResult, ShellError> {
+    ) -> Result<crate::shell::actions::ActionResult, ShellError> {
         ActionDispatcher::dispatch_invocation(cx, invocation)
     }
 
@@ -589,7 +589,7 @@ mod tests {
             id: next.clone(),
             extension_name: "org.shilpo.test".into(),
             name: "second".into(),
-            surface: crate::extensions::ContributionSurface::Action,
+            surface: crate::shell::extensions::ContributionSurface::Action,
             runtime_kind: shilpo_ext_runtime::worker::protocol::ExtensionRuntimeKind::Wasm,
             settings_schema: None,
             default_size: None,

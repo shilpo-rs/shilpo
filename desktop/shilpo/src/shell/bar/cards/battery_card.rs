@@ -15,7 +15,7 @@ use super::{
     model::{CardCapabilities, CardChannel, CardOwnerId, CardSourceId},
     provider::CardProvider,
 };
-use crate::runtime::ShellRuntime;
+use crate::shell::runtime::ShellRuntime;
 
 /// Built-in card provider for the system Battery.
 pub(crate) struct BatteryCardProvider {

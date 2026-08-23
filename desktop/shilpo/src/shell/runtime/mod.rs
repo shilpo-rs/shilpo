@@ -25,10 +25,10 @@ pub use wallpaper_coordinator::WallpaperCoordinator;
 pub(crate) use wallpaper_preview::{WallpaperPreviewResource, WallpaperPreviewSnapshot};
 
 #[cfg(test)]
-use crate::extensions::ExtensionCommand;
-use crate::{
+use crate::shell::extensions::ExtensionCommand;
+use crate::shell::{
+    dbus::{ShellCommand, ShellDbusService, ShellStatus, ShellTelemetry},
     extensions::{ContributionSurface, ExtensionCoordinator},
-    shell::dbus::{ShellCommand, ShellDbusService, ShellStatus, ShellTelemetry},
 };
 
 /// The shell runtime orchestrator: composes the deep service modules, watches
@@ -208,7 +208,7 @@ impl ShellRuntime {
 
     pub(crate) fn extension_coordinator(
         cx: &App,
-    ) -> Option<Arc<crate::extensions::ExtensionCoordinator>> {
+    ) -> Option<Arc<crate::shell::extensions::ExtensionCoordinator>> {
         if cx.has_global::<Self>() {
             cx.global::<Self>().extension_host().coordinator()
         } else {
@@ -218,8 +218,8 @@ impl ShellRuntime {
 
     pub(crate) fn extension_descriptors_for(
         cx: &App,
-        surface: crate::extensions::ContributionSurface,
-    ) -> Vec<crate::extensions::ContributionDescriptor> {
+        surface: crate::shell::extensions::ContributionSurface,
+    ) -> Vec<crate::shell::extensions::ContributionDescriptor> {
         if cx.has_global::<Self>() {
             cx.global::<Self>()
                 .extension_host()
@@ -426,9 +426,9 @@ impl ShellRuntime {
         });
 
         let wallpaper_preview_changed = cx.observe(&wallpaper_preview, |_, cx| {
-            crate::bar::cards::adapter::CardCoordinator::refresh_owner(
+            crate::shell::bar::cards::adapter::CardCoordinator::refresh_owner(
                 cx,
-                &crate::bar::cards::workspace_card::workspace_owner_id(),
+                &crate::shell::bar::cards::workspace_card::workspace_owner_id(),
             );
         });
         cx.global_mut::<Self>()._wallpaper_preview_changed = Some(wallpaper_preview_changed);
@@ -483,7 +483,7 @@ impl ShellRuntime {
                 .global_mut::<ShellRuntime>()
                 .shell_surfaces
                 .handle_window_closed(window_id);
-            crate::bar::cards::adapter::CardCoordinator::forget_window(cx, window_id);
+            crate::shell::bar::cards::adapter::CardCoordinator::forget_window(cx, window_id);
             Self::publish_status(cx);
             match outcome {
                 WindowClosedOutcome::Nothing => {}
@@ -510,7 +510,7 @@ impl ShellRuntime {
         mut polkit_rx: tokio::sync::watch::Receiver<shilpo_services::PolkitSnapshot>,
         mut idle_rx: tokio::sync::watch::Receiver<shilpo_services::IdleSnapshot>,
         mut mailbox_rx: tokio::sync::mpsc::Receiver<ShellCommand>,
-        mut config_rx: crate::bar::service_worker::ConfigReceiver,
+        mut config_rx: crate::shell::bar::service_worker::ConfigReceiver,
         device_client: shilpo_services::DeviceClient,
     ) {
         let task = cx.spawn(async move |cx| {
@@ -704,7 +704,7 @@ impl ShellRuntime {
         polkit_snapshot: Option<shilpo_services::PolkitSnapshot>,
         idle_snapshot: Option<shilpo_services::IdleSnapshot>,
         shell_commands: Vec<ShellCommand>,
-        config_updates: Vec<crate::bar::service_worker::ConfigUpdate>,
+        config_updates: Vec<crate::shell::bar::service_worker::ConfigUpdate>,
     ) {
         if !cx.has_global::<Self>() {
             return;
@@ -741,18 +741,19 @@ impl ShellRuntime {
                         {
                             if info.available && !info.is_present && upd.state.lifecycle.is_ready()
                             {
-                                crate::bar::cards::adapter::CardCoordinator::dispatch(
+                                crate::shell::bar::cards::adapter::CardCoordinator::dispatch(
                                     cx,
-                                    crate::bar::cards::model::CardRequest::AnchorRemoved {
-                                        source: crate::bar::cards::model::CardSourceId::singleton(
-                                            "battery",
-                                        ),
+                                    crate::shell::bar::cards::model::CardRequest::AnchorRemoved {
+                                        source:
+                                            crate::shell::bar::cards::model::CardSourceId::singleton(
+                                                "battery",
+                                            ),
                                     },
                                 );
                             }
-                            crate::bar::cards::adapter::CardCoordinator::refresh_owner(
+                            crate::shell::bar::cards::adapter::CardCoordinator::refresh_owner(
                                 cx,
-                                &crate::bar::cards::model::CardOwnerId::new("battery"),
+                                &crate::shell::bar::cards::model::CardOwnerId::new("battery"),
                             );
                             Self::dispatch_extension_event(
                                 cx,
@@ -764,17 +765,17 @@ impl ShellRuntime {
                         }
                     }
                     shilpo_services::DeviceDomain::Audio => {
-                        crate::bar::cards::adapter::CardCoordinator::refresh_owner(
+                        crate::shell::bar::cards::adapter::CardCoordinator::refresh_owner(
                             cx,
-                            &crate::bar::cards::model::CardOwnerId::new("audio"),
+                            &crate::shell::bar::cards::model::CardOwnerId::new("audio"),
                         );
                     }
                     shilpo_services::DeviceDomain::Network => {
                         if let shilpo_services::DomainPayload::Network(ref info) = upd.state.payload
                         {
-                            crate::bar::cards::adapter::CardCoordinator::refresh_owner(
+                            crate::shell::bar::cards::adapter::CardCoordinator::refresh_owner(
                                 cx,
-                                &crate::bar::cards::model::CardOwnerId::new("network"),
+                                &crate::shell::bar::cards::model::CardOwnerId::new("network"),
                             );
                             Self::dispatch_extension_event(
                                 cx,
@@ -786,9 +787,9 @@ impl ShellRuntime {
                     }
                     shilpo_services::DeviceDomain::Media => {
                         if let shilpo_services::DomainPayload::Media(ref info) = upd.state.payload {
-                            crate::bar::cards::adapter::CardCoordinator::refresh_owner(
+                            crate::shell::bar::cards::adapter::CardCoordinator::refresh_owner(
                                 cx,
-                                &crate::bar::cards::model::CardOwnerId::new("media"),
+                                &crate::shell::bar::cards::model::CardOwnerId::new("media"),
                             );
                             Self::dispatch_extension_event(
                                 cx,
@@ -825,7 +826,7 @@ impl ShellRuntime {
 
         for config_upd in config_updates {
             match config_upd {
-                crate::bar::service_worker::ConfigUpdate::Loaded { config, changeset } => {
+                crate::shell::bar::service_worker::ConfigUpdate::Loaded { config, changeset } => {
                     Self::emit_config_signal(cx, true, changeset.clone(), 0);
                     Self::set_active_config(cx, &config);
                     if changeset.outputs || changeset.desktop {
@@ -843,7 +844,7 @@ impl ShellRuntime {
                         });
                     }
                 }
-                crate::bar::service_worker::ConfigUpdate::Failed { error, changeset } => {
+                crate::shell::bar::service_worker::ConfigUpdate::Failed { error, changeset } => {
                     Self::emit_config_signal(cx, false, changeset, 1);
                     let handles = cx.global::<Self>().shell_surfaces().bar_handles();
                     for handle in handles {
@@ -879,9 +880,9 @@ impl ShellRuntime {
         cx.global_mut::<Self>().shell_surfaces.update_readiness();
         Self::publish_status(cx);
         ShellSurfaces::refresh_bars(cx);
-        crate::bar::cards::adapter::CardCoordinator::refresh_owner(
+        crate::shell::bar::cards::adapter::CardCoordinator::refresh_owner(
             cx,
-            &crate::bar::cards::workspace_card::workspace_owner_id(),
+            &crate::shell::bar::cards::workspace_card::workspace_owner_id(),
         );
         if outputs_changed {
             ShellSurfaces::reconcile_bars(cx);
@@ -1035,11 +1036,11 @@ impl ShellRuntime {
                 let _ = task.await;
             }
             cx.update(|cx| {
-                crate::bar::cards::adapter::CardCoordinator::dispatch(
+                crate::shell::bar::cards::adapter::CardCoordinator::dispatch(
                     cx,
-                    crate::bar::cards::model::CardRequest::Shutdown,
+                    crate::shell::bar::cards::model::CardRequest::Shutdown,
                 );
-                crate::bar::cards::adapter::CardCoordinator::destroy_all_bands(cx);
+                crate::shell::bar::cards::adapter::CardCoordinator::destroy_all_bands(cx);
                 let windows = cx
                     .global_mut::<Self>()
                     .shell_surfaces
@@ -1091,7 +1092,7 @@ impl ShellRuntime {
         tokio::sync::broadcast::Sender<shilpo_services::DeviceClientUpdate>,
         tokio::sync::broadcast::Sender<shilpo_services::Notification>,
         tokio::sync::mpsc::Sender<ShellCommand>,
-        crate::bar::service_worker::ConfigSender,
+        crate::shell::bar::service_worker::ConfigSender,
     ) {
         let root =
             std::env::temp_dir().join(format!("shilpo-shell-event-test-{}", uuid::Uuid::new_v4()));
@@ -1159,7 +1160,7 @@ impl ShellRuntime {
         std::sync::Arc<shilpo_services::DeviceClient>,
         tokio::sync::broadcast::Sender<shilpo_services::Notification>,
         tokio::sync::mpsc::Sender<ShellCommand>,
-        crate::bar::service_worker::ConfigSender,
+        crate::shell::bar::service_worker::ConfigSender,
     ) {
         let root =
             std::env::temp_dir().join(format!("shilpo-shell-event-test-{}", uuid::Uuid::new_v4()));

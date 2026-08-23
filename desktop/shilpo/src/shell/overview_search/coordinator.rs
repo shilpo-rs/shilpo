@@ -768,7 +768,9 @@ mod tests {
         use shilpo_services::ClipboardItem;
         use tokio::sync::watch;
 
-        use crate::actions::{ActionCategory, ActionDescriptor, ActionId, ActionInputRequirement};
+        use crate::shell::actions::{
+            ActionCategory, ActionDescriptor, ActionId, ActionInputRequirement,
+        };
         use crate::shell::overview_search::{
             ActionSearchProvider, CalculatorSearchProvider, ClipboardSearchProvider,
             QuicklinksSearchProvider,
@@ -867,7 +869,9 @@ mod tests {
 
         use shilpo_services::{AppScanner, Application};
 
-        use crate::actions::{ActionCategory, ActionDescriptor, ActionId, ActionInputRequirement};
+        use crate::shell::actions::{
+            ActionCategory, ActionDescriptor, ActionId, ActionInputRequirement,
+        };
         use crate::shell::overview_search::{
             ActionSearchProvider, AppSearchProvider, QuicklinksSearchProvider,
         };
@@ -949,7 +953,9 @@ mod tests {
         use std::path::PathBuf;
         use tokio::sync::watch;
 
-        use crate::actions::{ActionCategory, ActionDescriptor, ActionId, ActionInputRequirement};
+        use crate::shell::actions::{
+            ActionCategory, ActionDescriptor, ActionId, ActionInputRequirement,
+        };
         use crate::shell::overview_search::{
             ActionSearchProvider, AppSearchProvider, CalculatorSearchProvider,
             ClipboardSearchProvider, QuicklinksSearchProvider, WindowSearchProvider,

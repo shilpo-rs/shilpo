@@ -241,7 +241,7 @@ mod tests {
 
     #[test]
     fn test_coordinator_snapshot_reads() {
-        let supervisor = crate::extensions::ExtensionSupervisor::new();
+        let supervisor = crate::shell::extensions::ExtensionSupervisor::new();
         let coordinator = ExtensionCoordinator::new_with_supervisor(supervisor);
 
         assert_eq!(coordinator.generation(), ExtensionGeneration(0));

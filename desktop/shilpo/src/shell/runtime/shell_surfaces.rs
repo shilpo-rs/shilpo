@@ -19,9 +19,9 @@ use shilpo_theme_daemon::DaemonState;
 use uuid::Uuid;
 
 use super::{ShellRuntime, WallpaperPreviewResource};
-use crate::bar::cards::adapter::CardCoordinator;
-use crate::bar::cards::model::CardRequest;
-use crate::{
+use crate::shell::bar::cards::adapter::CardCoordinator;
+use crate::shell::bar::cards::model::CardRequest;
+use crate::shell::{
     actions::ActionInvocation,
     bar::{BarSpec, BarView, OutputDescriptor, ReconciliationOp, geometry::BarGeometry},
     error::ShellError,
@@ -289,7 +289,7 @@ pub enum SurfaceRequest {
     CloseOverview,
     SyncDisplays,
     OpenFallbackBar,
-    ShowOsd(crate::osd::OsdKind),
+    ShowOsd(crate::shell::osd::OsdKind),
     ShowNotification(shilpo_services::Notification),
     OpenCapture(CaptureIntent),
     OpenExtensionPanel(CanonicalId),
@@ -357,12 +357,12 @@ pub(crate) struct ShutdownWindows {
     pub(crate) notification: Option<(
         u64,
         u32,
-        WindowHandle<crate::notification::NotificationToastView>,
+        WindowHandle<crate::shell::notification::NotificationToastView>,
     )>,
     pub(crate) polkit: Option<(
         u64,
         WindowHandle<shilpo_m3e::Root>,
-        Entity<crate::polkit::PolkitDialogView>,
+        Entity<crate::shell::polkit::PolkitDialogView>,
     )>,
     pub(crate) idle_grace: Option<(
         u64,
@@ -402,7 +402,7 @@ pub struct ShellSurfaces {
     notification: Option<(
         u64,
         u32,
-        WindowHandle<crate::notification::NotificationToastView>,
+        WindowHandle<crate::shell::notification::NotificationToastView>,
     )>,
     notification_generation: u64,
     notification_lifecycle: SurfaceLifecycle,
@@ -410,14 +410,14 @@ pub struct ShellSurfaces {
     osd: Option<(
         u64,
         WindowHandle<shilpo_m3e::Root>,
-        Entity<crate::osd::OsdView>,
+        Entity<crate::shell::osd::OsdView>,
     )>,
     osd_generation: u64,
     osd_lifecycle: SurfaceLifecycle,
     polkit: Option<(
         u64,
         WindowHandle<shilpo_m3e::Root>,
-        Entity<crate::polkit::PolkitDialogView>,
+        Entity<crate::shell::polkit::PolkitDialogView>,
     )>,
     polkit_generation: u64,
     polkit_lifecycle: SurfaceLifecycle,
@@ -556,7 +556,7 @@ impl ShellSurfaces {
             ..Default::default()
         };
         match cx.open_window(options, move |window, cx| {
-            crate::capture::CaptureOverlayView::view(frame, intent, config, window, cx)
+            crate::shell::capture::CaptureOverlayView::view(frame, intent, config, window, cx)
         }) {
             Ok(handle) => {
                 let surfaces = cx.global_mut::<ShellRuntime>().shell_surfaces_mut();
@@ -576,7 +576,7 @@ impl ShellSurfaces {
     fn show_notification(cx: &mut App, notification: shilpo_services::Notification) {
         use crate::config::BarPosition;
 
-        let timeout = crate::bar::view::notification_timeout(&notification);
+        let timeout = crate::shell::bar::view::notification_timeout(&notification);
         let notification_id = notification.id;
         let bar_config = ShellRuntime::active_config(cx).bar;
         let bar_position = bar_config.position;
@@ -691,7 +691,7 @@ impl ShellSurfaces {
             return;
         }
         if let Ok(handle) = cx.open_window(options, move |window, cx| {
-            crate::notification::NotificationToastView::view(
+            crate::shell::notification::NotificationToastView::view(
                 notification.clone(),
                 NotificationLifecycleCallback { generation },
                 timeout,
@@ -766,12 +766,13 @@ impl ShellSurfaces {
             readiness: shilpo_services::ReadinessState::Starting,
         };
         let battery_provider =
-            std::sync::Arc::new(crate::bar::cards::battery_card::BatteryCardProvider::new());
+            std::sync::Arc::new(crate::shell::bar::cards::battery_card::BatteryCardProvider::new());
         manager
             .card_coordinator
             .register_provider_direct(battery_provider);
-        let workspace_provider =
-            std::sync::Arc::new(crate::bar::cards::workspace_card::WorkspacePreviewProvider::new());
+        let workspace_provider = std::sync::Arc::new(
+            crate::shell::bar::cards::workspace_card::WorkspacePreviewProvider::new(),
+        );
         manager
             .card_coordinator
             .register_provider_direct(workspace_provider);
@@ -917,7 +918,7 @@ impl ShellSurfaces {
         &mut self,
         generation: u64,
         notification_id: u32,
-        handle: WindowHandle<crate::notification::NotificationToastView>,
+        handle: WindowHandle<crate::shell::notification::NotificationToastView>,
     ) {
         self.notification = Some((generation, notification_id, handle));
         self.notification_lifecycle = SurfaceLifecycle::Open { generation };
@@ -926,7 +927,7 @@ impl ShellSurfaces {
 
     pub(crate) fn notification_handle(
         &self,
-    ) -> Option<WindowHandle<crate::notification::NotificationToastView>> {
+    ) -> Option<WindowHandle<crate::shell::notification::NotificationToastView>> {
         self.notification.as_ref().map(|(_, _, handle)| *handle)
     }
 
@@ -1231,7 +1232,7 @@ impl ShellSurfaces {
                 .iter()
                 .map(|(id, (_, spec))| (*id, spec.clone()))
                 .collect();
-            crate::bar::reconciliation::reconcile_output_bars(
+            crate::shell::bar::reconciliation::reconcile_output_bars(
                 &outputs,
                 &ShellRuntime::active_config(cx),
                 &current_bars,
@@ -1475,12 +1476,12 @@ impl ShellSurfaces {
     }
 
     pub fn normalize_app_key(value: &str) -> String {
-        crate::app_icons::normalize_app_key(value)
+        crate::shell::app_icons::normalize_app_key(value)
     }
 
     pub fn app_icon_index(cx: &App) -> HashMap<String, PathBuf> {
         let apps = Self::overview_applications(cx);
-        crate::app_icons::build_app_icon_index(apps)
+        crate::shell::app_icons::build_app_icon_index(apps)
     }
 
     pub(crate) fn open_or_focus_overview(cx: &mut App) {
@@ -1730,7 +1731,7 @@ impl ShellSurfaces {
         .detach();
     }
 
-    pub(crate) fn show_osd(cx: &mut App, kind: crate::osd::OsdKind) {
+    pub(crate) fn show_osd(cx: &mut App, kind: crate::shell::osd::OsdKind) {
         let existing = cx
             .global_mut::<ShellRuntime>()
             .shell_surfaces_mut()
@@ -1794,11 +1795,12 @@ impl ShellSurfaces {
             ..Default::default()
         };
 
-        let spawned_view: std::sync::Arc<std::sync::Mutex<Option<Entity<crate::osd::OsdView>>>> =
-            std::sync::Arc::new(std::sync::Mutex::new(None));
+        let spawned_view: std::sync::Arc<
+            std::sync::Mutex<Option<Entity<crate::shell::osd::OsdView>>>,
+        > = std::sync::Arc::new(std::sync::Mutex::new(None));
         let view_cell = spawned_view.clone();
         let window_result = cx.open_window(options, move |window, cx| {
-            let (root, view) = crate::osd::OsdView::view(kind, window, cx);
+            let (root, view) = crate::shell::osd::OsdView::view(kind, window, cx);
             *view_cell.lock().unwrap() = Some(view);
             root
         });
@@ -1880,7 +1882,7 @@ impl ShellSurfaces {
             let req_clone = req.clone();
             let prompt_clone = prompt_state.clone();
             let spawned_view: std::sync::Arc<
-                std::sync::Mutex<Option<Entity<crate::polkit::PolkitDialogView>>>,
+                std::sync::Mutex<Option<Entity<crate::shell::polkit::PolkitDialogView>>>,
             > = std::sync::Arc::new(std::sync::Mutex::new(None));
             let view_cell = spawned_view.clone();
 
@@ -1890,7 +1892,7 @@ impl ShellSurfaces {
                     true
                 });
                 let view = cx.new(|cx| {
-                    crate::polkit::PolkitDialogView::new(req_clone, prompt_clone, window, cx)
+                    crate::shell::polkit::PolkitDialogView::new(req_clone, prompt_clone, window, cx)
                 });
                 *view_cell.lock().unwrap() = Some(view.clone());
                 cx.new(|cx| shilpo_m3e::Root::new(view, window, cx).bordered(false))
@@ -2087,7 +2089,7 @@ impl ShellSurfaces {
         );
         let view_id = contribution.clone();
         match cx.open_window(options, move |window, cx| {
-            crate::extension_surface::ExtensionSurfaceView::view(view_id, None, window, cx)
+            crate::shell::extension_surface::ExtensionSurfaceView::view(view_id, None, window, cx)
         }) {
             Ok(handle) => {
                 cx.global_mut::<ShellRuntime>()
@@ -2212,7 +2214,7 @@ impl ShellSurfaces {
             let contribution = spec.contribution.clone();
             let view_instance_id = instance_id.clone();
             match cx.open_window(options, move |window, cx| {
-                crate::extension_surface::ExtensionSurfaceView::view(
+                crate::shell::extension_surface::ExtensionSurfaceView::view(
                     contribution,
                     Some(view_instance_id),
                     window,
@@ -2532,7 +2534,7 @@ mod tests {
             ShellRuntime::install_for_test(app);
             ShellSurfaces::request(
                 app,
-                SurfaceRequest::ShowOsd(crate::osd::OsdKind::Volume {
+                SurfaceRequest::ShowOsd(crate::shell::osd::OsdKind::Volume {
                     level: 20,
                     muted: false,
                 }),
@@ -2551,7 +2553,7 @@ mod tests {
         cx.update(|app| {
             ShellSurfaces::request(
                 app,
-                SurfaceRequest::ShowOsd(crate::osd::OsdKind::Volume {
+                SurfaceRequest::ShowOsd(crate::shell::osd::OsdKind::Volume {
                     level: 80,
                     muted: false,
                 }),
@@ -2612,7 +2614,7 @@ mod tests {
 
         let start = Instant::now();
         for _ in 0..1000 {
-            let _geom = crate::bar::geometry::BarGeometry::calculate_with_scale(
+            let _geom = crate::shell::bar::geometry::BarGeometry::calculate_with_scale(
                 display_id,
                 display_bounds,
                 &config.bar,
@@ -2633,7 +2635,7 @@ mod tests {
         let display_bounds = Bounds::new(point(px(0.), px(0.)), size(px(3840.), px(2160.)));
         let display_id = gpui::DisplayId::from(2u64);
 
-        let bar_geom = crate::bar::geometry::BarGeometry::calculate_with_scale(
+        let bar_geom = crate::shell::bar::geometry::BarGeometry::calculate_with_scale(
             display_id,
             display_bounds,
             &config.bar,
@@ -2706,7 +2708,7 @@ mod tests {
         cx.update(|app| {
             ShellSurfaces::request(
                 app,
-                SurfaceRequest::ShowOsd(crate::osd::OsdKind::Volume {
+                SurfaceRequest::ShowOsd(crate::shell::osd::OsdKind::Volume {
                     level: 50,
                     muted: false,
                 }),
@@ -2791,7 +2793,7 @@ mod tests {
         cx.update(|app| {
             ShellSurfaces::request(
                 app,
-                SurfaceRequest::ShowOsd(crate::osd::OsdKind::Volume {
+                SurfaceRequest::ShowOsd(crate::shell::osd::OsdKind::Volume {
                     level: 30,
                     muted: false,
                 }),
@@ -2824,7 +2826,7 @@ mod tests {
         cx.update(|app| {
             ShellSurfaces::request(
                 app,
-                SurfaceRequest::ShowOsd(crate::osd::OsdKind::Volume {
+                SurfaceRequest::ShowOsd(crate::shell::osd::OsdKind::Volume {
                     level: 75,
                     muted: true,
                 }),

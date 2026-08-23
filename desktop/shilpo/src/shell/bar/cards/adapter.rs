@@ -31,7 +31,7 @@ use super::{
     provider::CardProvider,
 };
 use crate::config::BarPosition;
-use crate::runtime::{ShellRuntime, ShellSurfaces};
+use crate::shell::runtime::{ShellRuntime, ShellSurfaces};
 
 // ────────────────────────────────────────────────────────────────
 // CardCoordinator
@@ -371,8 +371,8 @@ impl CardCoordinator {
 
     fn project_lifecycle(
         slot: &super::model::ChannelSlot,
-    ) -> crate::runtime::shell_surfaces::SurfaceLifecycle {
-        use crate::runtime::shell_surfaces::SurfaceLifecycle;
+    ) -> crate::shell::runtime::shell_surfaces::SurfaceLifecycle {
+        use crate::shell::runtime::shell_surfaces::SurfaceLifecycle;
         match slot.lifecycle {
             super::model::ChannelLifecycle::Closed => SurfaceLifecycle::Closed,
             super::model::ChannelLifecycle::Open => SurfaceLifecycle::Open {
@@ -387,9 +387,9 @@ impl CardCoordinator {
     /// Lifecycle projection for `SurfaceSnapshot`.
     pub(crate) fn persistent_lifecycle(
         cx: &App,
-    ) -> crate::runtime::shell_surfaces::SurfaceLifecycle {
+    ) -> crate::shell::runtime::shell_surfaces::SurfaceLifecycle {
         if !cx.has_global::<ShellRuntime>() {
-            return crate::runtime::shell_surfaces::SurfaceLifecycle::Closed;
+            return crate::shell::runtime::shell_surfaces::SurfaceLifecycle::Closed;
         }
         Self::project_lifecycle(
             &cx.global::<ShellRuntime>()
@@ -401,9 +401,11 @@ impl CardCoordinator {
     }
 
     /// Lifecycle projection for `SurfaceSnapshot`.
-    pub(crate) fn preview_lifecycle(cx: &App) -> crate::runtime::shell_surfaces::SurfaceLifecycle {
+    pub(crate) fn preview_lifecycle(
+        cx: &App,
+    ) -> crate::shell::runtime::shell_surfaces::SurfaceLifecycle {
         if !cx.has_global::<ShellRuntime>() {
-            return crate::runtime::shell_surfaces::SurfaceLifecycle::Closed;
+            return crate::shell::runtime::shell_surfaces::SurfaceLifecycle::Closed;
         }
         Self::project_lifecycle(
             &cx.global::<ShellRuntime>()
@@ -740,7 +742,7 @@ impl CardCoordinator {
             tracing::debug!(win_id, "restoring focus after persistent card close");
             let _ = ShellRuntime::dispatch_action(
                 cx,
-                crate::actions::ActionInvocation::FocusWindow(win_id),
+                crate::shell::actions::ActionInvocation::FocusWindow(win_id),
             );
         } else {
             tracing::debug!("no prior focused window to restore");
@@ -1220,7 +1222,7 @@ mod tests {
     use gpui::{Size, TestAppContext, size};
 
     use super::*;
-    use crate::runtime::shell_surfaces::SurfaceLifecycle;
+    use crate::shell::runtime::shell_surfaces::SurfaceLifecycle;
 
     #[test]
     fn bar_menu_close_reason_mapping_is_exhaustive() {
@@ -1627,7 +1629,7 @@ mod tests {
     fn headless_shell_delivers_every_extension_menu_close_reason(cx: &mut TestAppContext) {
         use shilpo_ext_api::{CanonicalId, ContributionId, ExtensionEvent, ExtensionId};
 
-        use crate::extensions::ExtensionCommand;
+        use crate::shell::extensions::ExtensionCommand;
 
         let cases = [
             (

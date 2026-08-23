@@ -26,7 +26,11 @@ impl Styled for NetworkWidget {
 
 impl RenderOnce for NetworkWidget {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        crate::widgets::NetworkWidget::new(self.id, self.info.wifi_enabled, self.info.is_connected)
-            .render(window, cx)
+        crate::shell::widgets::NetworkWidget::new(
+            self.id,
+            self.info.wifi_enabled,
+            self.info.is_connected,
+        )
+        .render(window, cx)
     }
 }

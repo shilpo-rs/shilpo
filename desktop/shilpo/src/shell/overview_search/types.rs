@@ -4,7 +4,7 @@ use shilpo_m3e::IconName;
 use shilpo_services::{Application, ClipboardItem};
 
 use super::{parser::SearchMode, sink::SearchSink};
-use crate::actions::ActionDescriptor;
+use crate::shell::actions::ActionDescriptor;
 
 /// Default bound on candidates collected from a single trusted (built-in) provider's
 /// scratch sink before ranking. Must comfortably exceed any realistic single provider's

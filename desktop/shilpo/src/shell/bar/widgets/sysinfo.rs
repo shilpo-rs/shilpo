@@ -1,1 +1,1 @@
-pub use crate::widgets::sysinfo::*;
+pub use crate::shell::widgets::sysinfo::*;

@@ -16,7 +16,7 @@ use shilpo_m3e::{
 };
 use shilpo_services::{CompositorSnapshot, WindowInfo, WorkspaceInfo};
 
-use crate::{
+use crate::shell::{
     app_icons::{app_icon, build_app_icon_index, resolve_app_icon_path},
     overview_search::{
         ActionResult, ActionSearchProvider, AppSearchProvider, CalculatorSearchProvider,
@@ -204,7 +204,7 @@ pub struct WorkspaceOverview {
     generation: u64,
     close_reason: Option<OverviewCloseReason>,
     focus_handle: Option<FocusHandle>,
-    lifecycle: Option<crate::runtime::shell_surfaces::OverviewLifecycleCallback>,
+    lifecycle: Option<crate::shell::runtime::shell_surfaces::OverviewLifecycleCallback>,
     reduced_motion: bool,
     _wallpaper_subscription: Option<gpui::Subscription>,
     app_icons: Arc<HashMap<String, PathBuf>>,
@@ -548,10 +548,12 @@ impl WorkspaceOverview {
                     self.begin_close(OverviewCloseReason::Selection, cx);
                 }
                 Ok(ActionResult::InvokeAction(action)) => {
-                    if let Ok(invocation) = crate::actions::ActionInvocation::from_id_and_payload(
-                        action.id.clone(),
-                        None,
-                    ) {
+                    if let Ok(invocation) =
+                        crate::shell::actions::ActionInvocation::from_id_and_payload(
+                            action.id.clone(),
+                            None,
+                        )
+                    {
                         let _ = ShellRuntime::dispatch_action(cx, invocation);
                         self.begin_close(OverviewCloseReason::Selection, cx);
                     }
@@ -708,7 +710,7 @@ impl WorkspaceOverview {
     }
 
     pub(crate) fn view(
-        lifecycle: crate::runtime::shell_surfaces::OverviewLifecycleCallback,
+        lifecycle: crate::shell::runtime::shell_surfaces::OverviewLifecycleCallback,
         window: &mut Window,
         cx: &mut App,
     ) -> Entity<shilpo_m3e::Root> {
@@ -746,7 +748,7 @@ impl WorkspaceOverview {
         if let Some(coordinator) = ShellRuntime::extension_coordinator(cx) {
             let descriptors = ShellRuntime::extension_descriptors_for(
                 cx,
-                crate::extensions::ContributionSurface::SearchProvider,
+                crate::shell::extensions::ContributionSurface::SearchProvider,
             );
             for desc in descriptors {
                 let modes: Vec<crate::shell::overview_search::parser::SearchMode> = desc
@@ -975,7 +977,7 @@ impl Render for WorkspaceOverview {
                 let wallpaper_snapshot = if cx.has_global::<ShellRuntime>() {
                     ShellRuntime::wallpaper_preview_snapshot(cx)
                 } else {
-                    crate::runtime::WallpaperPreviewSnapshot::Empty
+                    crate::shell::runtime::WallpaperPreviewSnapshot::Empty
                 };
                 let wallpaper_source: Option<ImageSource> =
                     wallpaper_snapshot.ready_image().map(ImageSource::from);

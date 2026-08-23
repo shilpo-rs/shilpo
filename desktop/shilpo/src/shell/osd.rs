@@ -4,7 +4,7 @@ use gpui::{
 };
 use shilpo_m3e::{ActiveTheme, Icon, IconName, StyledExt, h_flex, v_flex};
 
-use crate::runtime::ShellSurfaces;
+use crate::shell::runtime::ShellSurfaces;
 
 /// Kind of On-Screen Display popup.
 #[derive(Debug, Clone, PartialEq, Eq)]
