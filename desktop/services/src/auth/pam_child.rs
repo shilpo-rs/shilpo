@@ -33,6 +33,9 @@ use pam_sys::{
     PAM_SUCCESS, PAM_TEXT_INFO, pam_authenticate, pam_conv, pam_end, pam_message, pam_response,
     pam_start, pam_strerror,
 };
+use zeroize::Zeroize;
+
+use crate::secret::zeroize_string;
 
 fn resolve_current_username() -> Option<String> {
     let uid = unsafe { libc::getuid() };
@@ -127,8 +130,8 @@ unsafe extern "C" fn conversation_callback(
         match message.msg_style {
             s if s == PAM_PROMPT_ECHO_OFF => {
                 emit_line(&format!("PAM_PROMPT_ECHO_OFF {text}"));
-                let response = read_response_line();
-                reply.resp = strdup_response(&response);
+                let mut response = read_response_line();
+                reply.resp = strdup_and_zeroize_response(&mut response);
                 if reply.resp.is_null() {
                     // Embedded NUL byte in the response, or strdup ran out of memory.
                     // Returning PAM_SUCCESS with a null resp for a message that required
@@ -140,8 +143,8 @@ unsafe extern "C" fn conversation_callback(
             }
             s if s == PAM_PROMPT_ECHO_ON => {
                 emit_line(&format!("PAM_PROMPT_ECHO_ON {text}"));
-                let response = read_response_line();
-                reply.resp = strdup_response(&response);
+                let mut response = read_response_line();
+                reply.resp = strdup_and_zeroize_response(&mut response);
                 if reply.resp.is_null() {
                     unsafe { free_partial_replies(replies, i + 1) };
                     return PAM_CONV_ERR;
@@ -167,10 +170,24 @@ unsafe extern "C" fn conversation_callback(
 }
 
 fn strdup_response(response: &str) -> *mut c_char {
-    let Ok(c_response) = CString::new(response) else {
-        return ptr::null_mut();
+    let c_response = match CString::new(response) {
+        Ok(response) => response,
+        Err(error) => {
+            let mut rejected_bytes = error.into_vec();
+            rejected_bytes.zeroize();
+            return ptr::null_mut();
+        }
     };
-    unsafe { libc::strdup(c_response.as_ptr()) }
+    let duplicated = unsafe { libc::strdup(c_response.as_ptr()) };
+    let mut temporary_bytes = c_response.into_bytes_with_nul();
+    temporary_bytes.zeroize();
+    duplicated
+}
+
+fn strdup_and_zeroize_response(response: &mut String) -> *mut c_char {
+    let duplicated = strdup_response(response);
+    zeroize_string(response);
+    duplicated
 }
 
 /// Frees the first `count` response entries' `resp` strings and the array itself, for
@@ -298,5 +315,22 @@ mod tests {
             resolve_final_rc(PAM_SUCCESS, Some(PAM_CRED_INSUFFICIENT)),
             PAM_CRED_INSUFFICIENT
         );
+    }
+
+    #[test]
+    fn response_is_cleared_after_successful_duplication() {
+        let mut response = String::from("credential");
+        let duplicated = strdup_and_zeroize_response(&mut response);
+        assert!(!duplicated.is_null());
+        assert!(response.is_empty());
+        unsafe { libc::free(duplicated.cast()) };
+    }
+
+    #[test]
+    fn response_is_cleared_when_duplication_rejects_embedded_nul() {
+        let mut response = String::from("credential\0suffix");
+        let duplicated = strdup_and_zeroize_response(&mut response);
+        assert!(duplicated.is_null());
+        assert!(response.is_empty());
     }
 }

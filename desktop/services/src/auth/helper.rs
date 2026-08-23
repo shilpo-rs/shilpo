@@ -25,18 +25,6 @@ pub enum AuthHelperEvent {
     Failure(String),
 }
 
-/// Zeroizes the memory backing a mutable `String` and clears it.
-pub fn zeroize_string(s: &mut String) {
-    let bytes = unsafe { s.as_bytes_mut() };
-    for byte in bytes.iter_mut() {
-        unsafe {
-            std::ptr::write_volatile(byte, 0);
-        }
-    }
-    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
-    s.clear();
-}
-
 /// Abstraction for a running PAM helper session.
 pub trait AuthHelperSession: Send {
     /// Writes a user response (e.g. password) followed by newline to the helper's stdin.

@@ -7,7 +7,7 @@ use shilpo_domain::{
 };
 use tokio::sync::{oneshot, watch};
 
-use super::helper::{HelperEvent, PolkitHelper, PolkitHelperSession, zeroize_string};
+use super::helper::{HelperEvent, PolkitHelper, PolkitHelperSession};
 use super::types::{
     CommandId, CommandResolver, CommandTicket, PolkitCommand, PolkitCommandOutcome,
     PolkitPromptState, PolkitRejectionReason, PolkitRequest, PolkitSnapshot,
@@ -631,10 +631,7 @@ impl PolkitDomainState {
                     item.resolver
                         .resolve(PolkitCommandOutcome::Applied { version });
                 }
-                PolkitCommand::ProvideResponse {
-                    cookie,
-                    mut response,
-                } => {
+                PolkitCommand::ProvideResponse { cookie, response } => {
                     let mut session_guard = self.active_session.lock().unwrap();
                     let matches = session_guard
                         .as_ref()
@@ -642,7 +639,6 @@ impl PolkitDomainState {
                         .unwrap_or(false);
 
                     if !matches {
-                        zeroize_string(&mut response);
                         item.resolver.resolve(PolkitCommandOutcome::Rejected {
                             reason: PolkitRejectionReason::NotFound,
                         });
@@ -653,8 +649,7 @@ impl PolkitDomainState {
                     session.last_interaction_ms = now_ms;
 
                     if let Some(ref mut h_session) = session.helper_session {
-                        let res = h_session.write_response(&response);
-                        zeroize_string(&mut response);
+                        let res = h_session.write_response(response.as_str());
 
                         if let Err(err) = res {
                             let err_msg = format!("Failed writing response to helper: {err}");
@@ -680,7 +675,6 @@ impl PolkitDomainState {
                             *self.active_session.lock().unwrap() = None;
                         }
                     } else {
-                        zeroize_string(&mut response);
                         item.resolver.resolve(PolkitCommandOutcome::Rejected {
                             reason: PolkitRejectionReason::InvalidState,
                         });

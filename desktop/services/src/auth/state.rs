@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use shilpo_domain::{MonotonicTimeSource, TimeSource};
 use tokio::sync::watch;
 
-use super::helper::{AuthHelper, AuthHelperEvent, AuthHelperSession, zeroize_string};
+use super::helper::{AuthHelper, AuthHelperEvent, AuthHelperSession};
 use super::types::{
     AuthCommand, AuthCommandOutcome, AuthOutcome, AuthPort, AuthPromptState, AuthRejectionReason,
     AuthSnapshot, CancellationReason, CommandId, CommandResolver, CommandTicket, DomainLifecycle,
@@ -464,10 +464,9 @@ impl AuthDomainState {
                     item.resolver
                         .resolve(AuthCommandOutcome::Applied { version });
                 }
-                AuthCommand::ProvideResponse { mut response } => {
+                AuthCommand::ProvideResponse { response } => {
                     let mut session_guard = self.active_session.lock().unwrap();
                     let Some(session) = session_guard.as_mut() else {
-                        zeroize_string(&mut response);
                         item.resolver.resolve(AuthCommandOutcome::Rejected {
                             reason: AuthRejectionReason::NotAuthenticating,
                         });
@@ -475,8 +474,7 @@ impl AuthDomainState {
                     };
 
                     session.last_interaction_ms = now_ms;
-                    let write_result = session.helper_session.write_response(&response);
-                    zeroize_string(&mut response);
+                    let write_result = session.helper_session.write_response(response.as_str());
                     drop(session_guard);
 
                     if let Err(err) = write_result {

@@ -25,6 +25,7 @@ pub mod notifications;
 pub mod polkit;
 pub mod power_profile;
 pub(crate) mod runtime;
+pub mod secret;
 pub mod session_store;
 pub mod status;
 pub mod tray;
@@ -79,6 +80,7 @@ pub use polkit::{
     PolkitRequest, PolkitService, PolkitSnapshot, SystemPolkitHelper,
 };
 pub use power_profile::{PowerProfile, PowerProfileInfo, PowerProfileService};
+pub use secret::SecretString;
 pub use session_store::*;
 pub use status::{BarState, ReadinessState, ServiceHealth, ServiceLifecycle};
 
