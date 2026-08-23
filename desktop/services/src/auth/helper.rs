@@ -1,4 +1,5 @@
 use std::io::{self, BufRead, BufReader, Write};
+use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -59,8 +60,8 @@ impl AuthHelper for SystemAuthHelper {
     fn spawn_session(&self, service: &str) -> io::Result<Box<dyn AuthHelperSession>> {
         let exe = std::env::current_exe()?;
 
-        let mut child = Command::new(exe)
-            .env(PAM_HELPER_ENV_VAR, service)
+        let mut command = pam_helper_command(&exe, service);
+        let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -95,6 +96,14 @@ impl AuthHelper for SystemAuthHelper {
     }
 }
 
+fn pam_helper_command(exe: &Path, service: &str) -> Command {
+    let mut command = Command::new(exe);
+    // Authentication helpers must not inherit session-controlled role selectors
+    // (notably SHILPO_WASM_VALIDATOR) or unrelated process state.
+    command.env_clear().env(PAM_HELPER_ENV_VAR, service);
+    command
+}
+
 /// Blocking reader loop, run on a dedicated OS thread so that draining the helper's stdout
 /// never blocks a caller holding the domain state's lock.
 fn run_helper_reader(mut child: Child, stdout: ChildStdout, tx: mpsc::Sender<AuthHelperEvent>) {
@@ -103,14 +112,12 @@ fn run_helper_reader(mut child: Child, stdout: ChildStdout, tx: mpsc::Sender<Aut
         let mut line = String::new();
         match reader.read_line(&mut line) {
             Ok(0) => {
-                // EOF without an explicit SUCCESS/FAILURE line: infer the terminal event
-                // from the process exit status.
-                let status = child.wait();
-                let event = match status {
-                    Ok(s) if s.success() => AuthHelperEvent::Success,
-                    _ => AuthHelperEvent::Failure("pam helper exited unexpectedly".into()),
-                };
-                let _ = tx.send(event);
+                // Authentication succeeds only through an explicit SUCCESS protocol line.
+                // A silent helper exit must fail closed regardless of its process status.
+                let _ = child.wait();
+                let _ = tx.send(AuthHelperEvent::Failure(
+                    "pam helper exited unexpectedly".into(),
+                ));
                 return;
             }
             Ok(_) => {
@@ -185,6 +192,45 @@ pub fn parse_helper_line(line: &str) -> AuthHelperEvent {
         AuthHelperEvent::Failure(msg.trim().to_string())
     } else {
         AuthHelperEvent::TextInfo(line.to_string())
+    }
+}
+
+#[cfg(test)]
+mod reader_tests {
+    use super::{AuthHelperEvent, PAM_HELPER_ENV_VAR, pam_helper_command, run_helper_reader};
+    use std::path::Path;
+    use std::process::{Command, Stdio};
+    use std::sync::mpsc;
+
+    #[test]
+    fn successful_exit_without_terminal_event_fails_closed() {
+        let mut child = Command::new("sh")
+            .args(["-c", "exit 0"])
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("spawn empty successful child");
+        let stdout = child.stdout.take().expect("capture child stdout");
+        let (tx, rx) = mpsc::channel();
+
+        run_helper_reader(child, stdout, tx);
+
+        assert_eq!(
+            rx.recv().expect("reader emits a terminal event"),
+            AuthHelperEvent::Failure("pam helper exited unexpectedly".into())
+        );
+    }
+
+    #[test]
+    fn pam_helper_command_has_a_minimal_environment() {
+        let output = pam_helper_command(Path::new("/usr/bin/env"), "login")
+            .output()
+            .expect("run environment probe");
+
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8(output.stdout).expect("environment is UTF-8"),
+            format!("{PAM_HELPER_ENV_VAR}=login\n")
+        );
     }
 }
 

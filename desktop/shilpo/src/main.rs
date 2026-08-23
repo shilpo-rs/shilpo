@@ -12,6 +12,12 @@ use shilpo::cli::parse_duration;
 
 #[tokio::main]
 async fn main() {
+    if let Ok(service) = std::env::var(shilpo_services::auth::PAM_HELPER_ENV_VAR) {
+        // Runs the PAM conversation for the lock screen's auth domain and never returns.
+        // See `shilpo_services::auth::pam_child` for why this must be a freshly `exec`'d
+        // process rather than a raw `fork()` from the (multi-threaded) domain owner.
+        shilpo_services::auth::pam_child::run(&service);
+    }
     if let Ok(path) = std::env::var("SHILPO_WASM_VALIDATOR") {
         let result = std::fs::read(&path)
             .map_err(|error| error.to_string())
@@ -25,12 +31,6 @@ async fn main() {
             std::process::exit(EXIT_FAILURE);
         }
         std::process::exit(EXIT_SUCCESS);
-    }
-    if let Ok(service) = std::env::var(shilpo_services::auth::PAM_HELPER_ENV_VAR) {
-        // Runs the PAM conversation for the lock screen's auth domain and never returns.
-        // See `shilpo_services::auth::pam_child` for why this must be a freshly `exec`'d
-        // process rather than a raw `fork()` from the (multi-threaded) domain owner.
-        shilpo_services::auth::pam_child::run(&service);
     }
     let raw_args: Vec<String> = std::env::args().collect();
     if raw_args.len() <= 1 {
