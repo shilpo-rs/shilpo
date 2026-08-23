@@ -93,7 +93,7 @@ pub async fn run_lock() {
             tracing::info!("session locked: every output's surface is committed");
             // Tells a waiting PrepareForSleep watch (if this was a suspend-triggered
             // spawn) that it's now safe to release its delay inhibitor. No-op if
-            // SHILPO_LOCK_READY_FIFO wasn't set (every other trigger).
+            // SHILPO_LOCK_READY_FD wasn't set (every other trigger).
             shilpo_services::lock_supervisor::signal_lock_ready();
         }));
         lock.on_finished(Box::new(|| {
