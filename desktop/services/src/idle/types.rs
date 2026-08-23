@@ -106,6 +106,28 @@ pub enum InhibitSource {
     Named(String),
 }
 
+impl InhibitSource {
+    /// Returns whether two sources identify the same protocol-owned inhibit.
+    ///
+    /// ScreenSaver clients release an inhibit with only the cookie returned by
+    /// `Inhibit`; application and reason are descriptive metadata and are not
+    /// repeated by `UnInhibit`. The D-Bus sender remains part of the identity so
+    /// one client cannot release another client's cookie.
+    pub fn same_identity(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::ScreenSaver { cookie, sender, .. },
+                Self::ScreenSaver {
+                    cookie: other_cookie,
+                    sender: other_sender,
+                    ..
+                },
+            ) => cookie == other_cookie && sender == other_sender,
+            _ => self == other,
+        }
+    }
+}
+
 /// Atomic snapshot of the Idle domain.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IdleSnapshot {
