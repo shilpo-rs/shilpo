@@ -2621,8 +2621,10 @@ mod bar_menu_component_fixture_tests {
         }
     }
 
+    #[cfg(feature = "sdk-fixture")]
     const SDK_FIXTURE: &[u8] = include_bytes!(env!("SHILPO_SDK_FIXTURE_WASM"));
 
+    #[cfg(feature = "sdk-fixture")]
     #[test]
     fn sdk_authored_guest_component_instantiates_and_renders_view_tree() {
         let mut runtime =
