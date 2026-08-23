@@ -5,7 +5,9 @@ use shilpo_domain::{CancellationReason, DomainLifecycle, SupervisorState, TimeSo
 use tokio::sync::oneshot;
 
 use super::agent::AuthorityClient;
-use super::helper::{HelperEvent, MockPolkitHelper};
+use super::helper::{
+    HelperEvent, MockPolkitHelper, probe_system_helper_path, zeroize_bytes, zeroize_string,
+};
 use super::state::{PolkitDomainState, SUCCESS_DISMISS_DELAY_MS};
 use super::types::{
     PolkitCommand, PolkitCommandOutcome, PolkitIdentity, PolkitRejectionReason, PolkitRequest,
@@ -33,6 +35,23 @@ impl TimeSource for ManualClock {
     fn now_ms(&self) -> u64 {
         self.now_ms.load(Ordering::SeqCst)
     }
+}
+
+#[test]
+fn test_production_helper_probe_ignores_environment_override() {
+    let temp = tempfile::NamedTempFile::new().unwrap();
+    // SAFETY: nextest runs each test in its own process, so mutating a
+    // process-global env var here cannot race with another test.
+    unsafe {
+        std::env::set_var("POLKIT_AGENT_HELPER_1_PATH", temp.path());
+    }
+
+    let resolved = probe_system_helper_path();
+
+    unsafe {
+        std::env::remove_var("POLKIT_AGENT_HELPER_1_PATH");
+    }
+    assert_ne!(resolved.as_deref(), Some(temp.path()));
 }
 
 #[test]
