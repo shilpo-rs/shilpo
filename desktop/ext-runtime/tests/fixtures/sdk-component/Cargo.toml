@@ -8,6 +8,6 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-shilpo-ext-sdk = { git = "https://github.com/shilpo-rs/sdks", rev = "c48c0f0c8736d7398d0b091d1f23f63963d9f897" }
+shilpo-ext-sdk = { git = "https://github.com/shilpo-rs/sdks", rev = "fa28424c382c97bc5cfe66faf976267da7957684" }
 
 [workspace]
