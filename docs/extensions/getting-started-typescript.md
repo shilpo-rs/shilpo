@@ -122,8 +122,18 @@ info[settings.valid]: schema and defaults validated at settings.schema.json
 To test your extension live in a running Shilpo shell with hot-reloading on every file change:
 
 ```bash
+# Terminal 1: the normal daemon denies development sessions
+systemctl --user stop shilpo-shell.service
+shilpo daemon --developer-mode
+
+# Terminal 2
 shilpo ext dev my-extension
 ```
+
+Developer mode allows local extension code to be loaded only for the lifetime of that daemon process. It is not a
+configuration setting and is disabled again on the next normal daemon start. Because it expands the session-bus
+control plane, enable it only while actively developing, then stop the foreground daemon and restart
+`shilpo-shell.service`.
 
 ---
 

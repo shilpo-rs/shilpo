@@ -30,7 +30,11 @@ pub struct Cli {
 #[derive(Subcommand, Debug, Clone)]
 pub enum Commands {
     /// Shell daemon lifecycle, status, and telemetry (durable GPUI process role)
-    Daemon,
+    Daemon {
+        /// Permit session-bus callers to load local extension code for the lifetime of this daemon
+        #[arg(long)]
+        developer_mode: bool,
+    },
     /// Standalone settings window (user-launched GPUI process role)
     Settings,
     /// Supervised Wasmtime extension runtime (private worker process role)
