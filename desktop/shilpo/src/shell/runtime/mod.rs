@@ -1302,7 +1302,7 @@ fn spawn_prepare_for_sleep_lock_watch(
 
             if args.start {
                 // Block the locker's readiness wait on a thread: this is real blocking
-                // I/O (a FIFO open), not something with an async equivalent here.
+                // I/O on the inherited readiness socket.
                 let supervisor = lock_supervisor.clone();
                 let locked = tokio::task::spawn_blocking(move || {
                     supervisor
