@@ -32,6 +32,8 @@ Material Design 3 (M3) & Material Expressive components from [shilpo-rs/ui](http
 The UI component library (`shilpo-m3e`), its color math (`shilpo-theme`), shared macros (`shilpo-macros`), and the
 `storybook` component gallery live in [shilpo-rs/ui](https://github.com/shilpo-rs/ui), consumed here as a git
 dependency pinned to an exact revision (see the root `Cargo.toml`).
+See the [cross-repository pin promotion runbook](docs/cross-repository-pin-promotion.md) before promoting changes across
+the UI, Shilpo, SDK, and extensions repositories.
 
 ---
 
