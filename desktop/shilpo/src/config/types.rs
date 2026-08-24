@@ -1195,11 +1195,7 @@ impl Default for ShellSessionState {
 
 impl ShellSessionState {
     pub fn default_session_path() -> PathBuf {
-        let base = std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-            .unwrap_or_else(|| PathBuf::from("."));
-        base.join("shilpo").join("session.json")
+        config_dir().join("session.json")
     }
 
     pub fn migrate_to_latest(raw_json: &str) -> Self {

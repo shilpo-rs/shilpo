@@ -212,15 +212,7 @@ impl KeybindingsPage {
 }
 
 pub fn user_config_path() -> PathBuf {
-    std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join(".config")
-        })
-        .join("shilpo")
-        .join("config.toml")
+    crate::config::default_config_path()
 }
 
 pub fn save_keybinding_override(

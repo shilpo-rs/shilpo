@@ -36,6 +36,7 @@ pub use watcher::{
 
 #[cfg(test)]
 mod tests {
+    use std::process::Command;
     use std::str::FromStr;
 
     use tempfile::TempDir;
@@ -44,6 +45,71 @@ mod tests {
 
     fn valid() -> ShellConfig {
         ShellConfig::default()
+    }
+
+    fn run_config_path_consistency_probe(configure: impl FnOnce(&mut Command)) {
+        let mut command = Command::new(std::env::current_exe().expect("resolve test binary"));
+        command
+            .args([
+                "--exact",
+                "config::tests::settings_and_daemon_config_paths_match_probe",
+                "--nocapture",
+            ])
+            .env("SHILPO_CONFIG_PATH_CONSISTENCY_PROBE", "1")
+            .env_remove("HOME")
+            .env_remove("XDG_CONFIG_HOME");
+        configure(&mut command);
+
+        let output = command.output().expect("run isolated config path probe");
+        assert!(
+            output.status.success(),
+            "isolated config path probe failed:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
+
+    #[test]
+    fn settings_and_daemon_config_paths_match_probe() {
+        if std::env::var_os("SHILPO_CONFIG_PATH_CONSISTENCY_PROBE").is_none() {
+            return;
+        }
+
+        let canonical = default_config_path();
+        assert_eq!(
+            crate::settings::keybindings_page::user_config_path(),
+            canonical,
+            "settings must write beside the configuration read by the product"
+        );
+        assert_eq!(
+            crate::shell::daemon_config_path(),
+            canonical,
+            "the shell daemon must read the canonical configuration"
+        );
+        assert_eq!(
+            crate::shell::NiriShortcutBackend::default_output_path(),
+            config_dir().join("generated/niri-keybindings.kdl"),
+            "generated keybindings must use the canonical configuration directory"
+        );
+        assert_eq!(
+            ShellSessionState::default_session_path(),
+            config_dir().join("session.json"),
+            "session state must use the canonical configuration directory"
+        );
+    }
+
+    #[test]
+    fn config_paths_stay_consistent_when_home_is_unset() {
+        run_config_path_consistency_probe(|_| {});
+    }
+
+    #[test]
+    fn config_paths_stay_consistent_when_xdg_and_home_differ() {
+        run_config_path_consistency_probe(|command| {
+            command
+                .env("HOME", "/isolated/passwd-home")
+                .env("XDG_CONFIG_HOME", "/isolated/xdg-config");
+        });
     }
 
     #[test]

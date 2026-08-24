@@ -33,6 +33,10 @@ pub use extensions::{
 };
 pub use idle::IdleGraceOverlayView;
 pub use keybindings::{GlobalShortcutBackend, NiriShortcutBackend};
+
+pub(crate) fn daemon_config_path() -> std::path::PathBuf {
+    crate::config::default_config_path()
+}
 pub use notification::NotificationToastView;
 pub use osd::{OsdKind, OsdView};
 pub use overview::WorkspaceOverview;
@@ -134,9 +138,7 @@ pub fn run_daemon(developer_mode: bool) {
 
     app.run(move |cx| {
         shilpo_m3e::init(cx);
-        let config_path = std::env::var("HOME")
-            .map(|home| std::path::PathBuf::from(home).join(".config/shilpo/config.toml"))
-            .unwrap_or_else(|_| std::path::PathBuf::from(".config/shilpo/config.toml"));
+        let config_path = daemon_config_path();
         let resolver = crate::config::ConfigResolver::from_primary_path(&config_path);
         let config = match crate::config::migrate_primary_for_startup(&config_path) {
             Ok(outcome) => {
