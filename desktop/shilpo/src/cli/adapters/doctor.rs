@@ -45,7 +45,6 @@ impl DoctorChecker {
             self.check_wallpaper_daemon(auto_fix),
             self.check_niri_bindings(),
             self.check_config_file(auto_fix),
-            self.check_weather_extension(),
             self.check_terminal_fonts_cursors(),
             self.check_i2c_permissions(),
             self.check_xdg_user_dirs(auto_fix),
@@ -535,39 +534,6 @@ impl DoctorChecker {
                     config_path.display()
                 ),
                 repair_command: Some("./setup install".into()),
-                unit_identifier: None,
-                fix_applied: false,
-            }
-        }
-    }
-
-    pub fn check_weather_extension(&self) -> DiagnosticItem {
-        let ext_dir = crate::config::data_dir().join("extensions/installed/org.shilpo.weather");
-        let wasm_file = std::fs::read_dir(&ext_dir)
-            .ok()
-            .into_iter()
-            .flatten()
-            .filter_map(Result::ok)
-            .map(|entry| entry.path().join("extension.wasm"))
-            .find(|path| path.is_file());
-
-        if wasm_file.is_some() {
-            DiagnosticItem {
-                category: "Extensions".into(),
-                name: "Bundled Weather WASM Extension".into(),
-                status: DiagnosticStatus::Pass,
-                message: "Bundled weather WASM package installed and ready".into(),
-                repair_command: None,
-                unit_identifier: None,
-                fix_applied: false,
-            }
-        } else {
-            DiagnosticItem {
-                category: "Extensions".into(),
-                name: "Bundled Weather WASM Extension".into(),
-                status: DiagnosticStatus::Warn,
-                message: "Bundled weather extension WASM module is missing".into(),
-                repair_command: Some("./setup update".into()),
                 unit_identifier: None,
                 fix_applied: false,
             }
@@ -1148,5 +1114,17 @@ mod tests {
         assert_eq!(item.status, DiagnosticStatus::Pass);
         assert!(item.fix_applied);
         assert!(path.exists());
+    }
+
+    #[test]
+    fn diagnostics_do_not_assume_extensions_are_bundled() {
+        let items = DoctorChecker::new().run_diagnostics(false);
+
+        assert!(
+            items
+                .iter()
+                .all(|item| item.name != "Bundled Weather WASM Extension"),
+            "the binary-only installer must not diagnose an optional extension as bundled"
+        );
     }
 }
