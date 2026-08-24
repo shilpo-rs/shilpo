@@ -12,16 +12,16 @@ use shilpo_services::{
 };
 
 use super::geometry::HUG_CORNER_RADIUS;
-use crate::bar::cards::{
+use crate::config::{BarPosition, BarWidget, ShellConfig};
+use crate::shell::bar::cards::{
     adapter::CardCoordinator,
     model::{CardRequest, CardSourceId},
 };
-use crate::bar::service_worker::{self, WorkerCommand};
-use crate::bar::widgets::clock::{format_clock, format_date};
-use crate::battery::BatteryIndicator;
-use crate::config::{BarPosition, BarWidget, ShellConfig};
-use crate::osd::OsdKind;
-use crate::runtime::{ShellRuntime, ShellSurfaces, SurfaceRequest};
+use crate::shell::bar::service_worker::{self, WorkerCommand};
+use crate::shell::bar::widgets::clock::{format_clock, format_date};
+use crate::shell::battery::BatteryIndicator;
+use crate::shell::osd::OsdKind;
+use crate::shell::runtime::{ShellRuntime, ShellSurfaces, SurfaceRequest};
 
 fn build_hug_corner(
     start: Point<Pixels>,
@@ -457,7 +457,11 @@ impl BarView {
         }
     }
 
-    pub fn build(spec: crate::bar::BarSpec, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn build(
+        spec: crate::shell::bar::BarSpec,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let mut view = Self::new_with_config(window, cx, ShellConfig::default());
         view.config.bar = spec.config;
         view.extension_instance_prefix = Some(format!("bar:{:?}", spec.display_id));
@@ -467,7 +471,7 @@ impl BarView {
     }
 
     pub fn view_with_spec(
-        spec: crate::bar::BarSpec,
+        spec: crate::shell::bar::BarSpec,
         window: &mut Window,
         cx: &mut App,
     ) -> Entity<Self> {
@@ -487,11 +491,13 @@ impl BarView {
     ) -> gpui::AnyElement {
         use crate::config::{BarWidget, BuiltinBarWidget};
         let mut elements: Vec<gpui::AnyElement> = Vec::new();
-        let desired_menus =
-            ShellRuntime::descriptors_for(cx, crate::extensions::ContributionSurface::BarMenu)
-                .into_iter()
-                .map(|descriptor| descriptor.id)
-                .collect();
+        let desired_menus = ShellRuntime::descriptors_for(
+            cx,
+            crate::shell::extensions::ContributionSurface::BarMenu,
+        )
+        .into_iter()
+        .map(|descriptor| descriptor.id)
+        .collect();
         CardCoordinator::reconcile_extension_menu_providers(cx, &desired_menus);
 
         for (index, name) in widget_names.iter().enumerate() {
@@ -534,7 +540,7 @@ impl BarView {
                     let applications = ShellSurfaces::overview_applications(cx);
                     if self.app_icons_cache_apps != applications {
                         self.app_icons_cache = std::sync::Arc::new(
-                            crate::app_icons::build_app_icon_index(applications.clone()),
+                            crate::shell::app_icons::build_app_icon_index(applications.clone()),
                         );
                         self.app_icons_cache_apps = applications;
                     }
@@ -653,7 +659,7 @@ impl BarView {
                     let caffeine_svc = self.caffeine_service.clone();
                     let is_active = caffeine_svc.is_active();
                     elements.push(
-                        crate::widgets::CaffeineWidget::new(
+                        crate::shell::widgets::CaffeineWidget::new(
                             format!("caffeine_{section_name}_{index}"),
                             is_active,
                         )
@@ -673,7 +679,7 @@ impl BarView {
 
                         let menu_descriptor = ShellRuntime::descriptors_for(
                             cx,
-                            crate::extensions::ContributionSurface::BarMenu,
+                            crate::shell::extensions::ContributionSurface::BarMenu,
                         )
                         .into_iter()
                         .find(|desc| desc.bar_widget.as_ref() == Some(ext_ref));
@@ -1076,7 +1082,7 @@ mod hug_corner_tests {
 mod bar_input_region_tests {
     use gpui::{Bounds, point, px, size};
 
-    use crate::bar::view::compute_bar_input_region;
+    use crate::shell::bar::view::compute_bar_input_region;
 
     #[test]
     fn calculates_union_of_child_bounds_for_input_region() {

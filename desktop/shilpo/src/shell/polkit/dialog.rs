@@ -11,7 +11,7 @@ use shilpo_m3e::{
 };
 use shilpo_services::{PolkitCommand, PolkitPromptState, PolkitRequest, SecretString};
 
-use crate::runtime::ShellRuntime;
+use crate::shell::runtime::ShellRuntime;
 
 /// Polkit authentication agent modal dialog surface.
 pub struct PolkitDialogView {

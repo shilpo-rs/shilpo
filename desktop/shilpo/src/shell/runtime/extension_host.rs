@@ -5,7 +5,7 @@ use shilpo_ext_api::{CanonicalId, ExtensionEvent, ExtensionId, HostOperation, Vi
 use shilpo_ext_runtime::{AuthorizedHostOperation, AuthorizedHostOperationKind};
 
 use super::{ShellRuntime, shell_surfaces::ShellSurfaces};
-use crate::{
+use crate::shell::{
     actions::{ActionId, ActionInvocation},
     extensions::{
         ContributionDescriptor, ContributionInstance, ContributionSurface, ExtensionCommand,
@@ -50,7 +50,7 @@ fn circuit_notice_notification(
 /// Coordinator and task state are private; the shell interacts with extensions
 /// exclusively through the method surface below.
 pub struct ExtensionHost {
-    extensions: Option<Arc<crate::extensions::ExtensionCoordinator>>,
+    extensions: Option<Arc<crate::shell::extensions::ExtensionCoordinator>>,
     extension_tasks: HashMap<(ExtensionGeneration, ExtensionId, String), gpui::Task<()>>,
     extension_location_service: shilpo_services::LocationService,
     #[cfg(test)]
@@ -58,7 +58,7 @@ pub struct ExtensionHost {
 }
 
 impl ExtensionHost {
-    pub fn new(extensions: Option<Arc<crate::extensions::ExtensionCoordinator>>) -> Self {
+    pub fn new(extensions: Option<Arc<crate::shell::extensions::ExtensionCoordinator>>) -> Self {
         Self {
             extensions,
             extension_tasks: HashMap::new(),
@@ -77,7 +77,9 @@ impl ExtensionHost {
         self.extensions.is_some()
     }
 
-    pub(crate) fn coordinator(&self) -> Option<Arc<crate::extensions::ExtensionCoordinator>> {
+    pub(crate) fn coordinator(
+        &self,
+    ) -> Option<Arc<crate::shell::extensions::ExtensionCoordinator>> {
         self.extensions.clone()
     }
 
@@ -85,14 +87,14 @@ impl ExtensionHost {
         self.extensions.as_ref().map(|ext| ext.generation())
     }
 
-    pub(crate) fn host_generation(&self) -> crate::extensions::HostGeneration {
+    pub(crate) fn host_generation(&self) -> crate::shell::extensions::HostGeneration {
         self.extensions
             .as_ref()
             .map(|ext| ext.host_generation())
             .unwrap_or_default()
     }
 
-    pub(crate) fn diagnostics(&self) -> Option<crate::extensions::ExtensionHostDiagnostics> {
+    pub(crate) fn diagnostics(&self) -> Option<crate::shell::extensions::ExtensionHostDiagnostics> {
         self.extensions.as_ref().map(|ext| ext.host_diagnostics())
     }
 
@@ -157,24 +159,26 @@ impl ExtensionHost {
                 ExtensionEvent::PowerChanged {
                     percentage,
                     charging,
-                } => ExtensionCommand::Replaceable(crate::extensions::ReplaceableEvent::Power {
-                    percentage,
-                    charging,
-                }),
-                ExtensionEvent::NetworkChanged { connected } => {
-                    ExtensionCommand::Replaceable(crate::extensions::ReplaceableEvent::Network {
-                        connected,
-                    })
-                }
+                } => ExtensionCommand::Replaceable(
+                    crate::shell::extensions::ReplaceableEvent::Power {
+                        percentage,
+                        charging,
+                    },
+                ),
+                ExtensionEvent::NetworkChanged { connected } => ExtensionCommand::Replaceable(
+                    crate::shell::extensions::ReplaceableEvent::Network { connected },
+                ),
                 ExtensionEvent::MediaChanged {
                     title,
                     artist,
                     playing,
-                } => ExtensionCommand::Replaceable(crate::extensions::ReplaceableEvent::Media {
-                    title,
-                    artist,
-                    playing,
-                }),
+                } => ExtensionCommand::Replaceable(
+                    crate::shell::extensions::ReplaceableEvent::Media {
+                        title,
+                        artist,
+                        playing,
+                    },
+                ),
                 _ => ExtensionCommand::Lifecycle {
                     expected: ext.generation(),
                     event,
@@ -273,7 +277,7 @@ impl ExtensionHost {
         }
     }
 
-    pub(crate) fn drain_updates(&mut self) -> Vec<crate::extensions::ExtensionUpdate> {
+    pub(crate) fn drain_updates(&mut self) -> Vec<crate::shell::extensions::ExtensionUpdate> {
         self.extensions
             .as_ref()
             .map(|ext| ext.drain_updates())
@@ -333,7 +337,7 @@ impl ExtensionHost {
         }
     }
 
-    pub(crate) fn apply_update(cx: &mut App, update: crate::extensions::ExtensionUpdate) {
+    pub(crate) fn apply_update(cx: &mut App, update: crate::shell::extensions::ExtensionUpdate) {
         let current_gen = cx.global::<ShellRuntime>().extension_host().generation();
         let current_host_gen = cx
             .global::<ShellRuntime>()
@@ -478,7 +482,7 @@ impl ExtensionHost {
                 );
             }
             AuthorizedHostOperationKind::NonHttp(HostOperation::SetThemeSource { color }) => {
-                let argb = crate::bar::view::parse_hex_color(&color).unwrap_or(0xFF006C4C);
+                let argb = crate::shell::bar::view::parse_hex_color(&color).unwrap_or(0xFF006C4C);
                 shilpo_theme_daemon::ThemeClient::spawn_task(async move {
                     let client = shilpo_theme_daemon::ThemeClient::new().await;
                     let _ = client.set_custom_seed(argb).await;
@@ -664,7 +668,7 @@ impl ExtensionHost {
                 let task_key = key.clone();
                 let expected = generation;
                 let task = cx.spawn(async move |cx| {
-                    let response = crate::extension_http::fetch(request).await;
+                    let response = crate::shell::extension_http::fetch(request).await;
                     cx.update(|cx: &mut gpui::App| {
                         if cx.has_global::<ShellRuntime>() {
                             let host = cx.global_mut::<ShellRuntime>().extension_host_mut();
@@ -869,7 +873,7 @@ mod tests {
         );
         let id = ExtensionId::new("org.shilpo.weather").unwrap();
         assert_eq!(
-            crate::runtime::shell_surfaces::extension_settings(
+            crate::shell::runtime::shell_surfaces::extension_settings(
                 &config,
                 &id,
                 Some(&serde_json::json!({"show_condition": true}))

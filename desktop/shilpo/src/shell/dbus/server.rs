@@ -57,7 +57,7 @@ pub struct ShellDbusService {
     developer_mode: bool,
     mailbox_tx: mpsc::Sender<ShellCommand>,
     compositor_broker: Arc<Mutex<Option<Arc<CompositorCommandBroker>>>>,
-    extension_coordinator: Arc<Mutex<Option<Arc<crate::extensions::ExtensionCoordinator>>>>,
+    extension_coordinator: Arc<Mutex<Option<Arc<crate::shell::extensions::ExtensionCoordinator>>>>,
     dev_sessions: Arc<Mutex<std::collections::HashMap<String, DevSession>>>,
     status: Arc<arc_swap::ArcSwap<ShellStatus>>,
     telemetry: Arc<arc_swap::ArcSwap<ShellTelemetry>>,
@@ -97,7 +97,7 @@ impl ShellDbusService {
 
     pub fn set_extension_coordinator(
         &self,
-        coordinator: Option<Arc<crate::extensions::ExtensionCoordinator>>,
+        coordinator: Option<Arc<crate::shell::extensions::ExtensionCoordinator>>,
     ) {
         *self.extension_coordinator.lock().unwrap() = coordinator;
     }

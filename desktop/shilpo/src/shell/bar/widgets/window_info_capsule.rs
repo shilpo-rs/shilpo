@@ -6,8 +6,8 @@ use shilpo_m3e::{
     ActiveTheme, Colorize, ContextMenuExt, Icon, IconName, PopupMenuItem, StyledExt, h_flex,
 };
 
-use crate::actions::ActionInvocation;
-use crate::runtime::ShellRuntime;
+use crate::shell::actions::ActionInvocation;
+use crate::shell::runtime::ShellRuntime;
 
 pub type ClickHandler = Box<dyn Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static>;
 

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use gpui::{Context, IntoElement, Render, Styled, Window, div, rgba};
 
-use crate::runtime::ShellRuntime;
+use crate::shell::runtime::ShellRuntime;
 
 /// Fullscreen dimming grace overlay view shown before idle actions execute.
 pub struct IdleGraceOverlayView {

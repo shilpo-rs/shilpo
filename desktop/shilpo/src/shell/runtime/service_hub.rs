@@ -4,7 +4,7 @@ use gpui::App;
 use shilpo_services::{ClipboardItem, Notification, NotificationPort, NotificationService};
 
 use super::{SessionContext, ShellRuntime};
-use crate::bar::service_worker::{
+use crate::shell::bar::service_worker::{
     self, CommandSender, ConfigReceiver, DeviceCommand, WorkerCommand,
 };
 
@@ -31,7 +31,7 @@ pub struct ServiceHub {
     app_scanner: shilpo_services::AppScanner,
     device_client: shilpo_services::DeviceClient,
     service_commands: CommandSender,
-    device_snapshot: crate::bar::service_worker::DeviceSnapshot,
+    device_snapshot: crate::shell::bar::service_worker::DeviceSnapshot,
     domain_states:
         std::collections::HashMap<shilpo_services::DeviceDomain, shilpo_services::DomainState>,
     _service_task: Option<gpui::Task<()>>,
@@ -129,7 +129,7 @@ impl ServiceHub {
             app_scanner,
             device_client,
             service_commands,
-            device_snapshot: crate::bar::service_worker::DeviceSnapshot::default(),
+            device_snapshot: crate::shell::bar::service_worker::DeviceSnapshot::default(),
             domain_states: std::collections::HashMap::new(),
             _service_task: Some(service_task),
             _app_watcher: app_watcher,
@@ -159,7 +159,7 @@ impl ServiceHub {
             app_scanner: shilpo_services::AppScanner::new_empty(),
             device_client,
             service_commands,
-            device_snapshot: crate::bar::service_worker::DeviceSnapshot::default(),
+            device_snapshot: crate::shell::bar::service_worker::DeviceSnapshot::default(),
             domain_states: std::collections::HashMap::new(),
             _service_task: None,
             _app_watcher: None,
@@ -188,7 +188,7 @@ impl ServiceHub {
             app_scanner: shilpo_services::AppScanner::new_empty(),
             device_client,
             service_commands,
-            device_snapshot: crate::bar::service_worker::DeviceSnapshot::default(),
+            device_snapshot: crate::shell::bar::service_worker::DeviceSnapshot::default(),
             domain_states: std::collections::HashMap::new(),
             _service_task: None,
             _app_watcher: None,
@@ -210,7 +210,7 @@ impl ServiceHub {
         self.service_commands.clone()
     }
 
-    pub(crate) fn device_snapshot(&self) -> crate::bar::service_worker::DeviceSnapshot {
+    pub(crate) fn device_snapshot(&self) -> crate::shell::bar::service_worker::DeviceSnapshot {
         self.device_snapshot.clone()
     }
 
@@ -434,7 +434,7 @@ pub(crate) fn apply_notification_dnd(notification: &dyn NotificationPort, enable
 }
 
 impl ShellRuntime {
-    pub fn service_commands(cx: &App) -> Option<crate::bar::service_worker::CommandSender> {
+    pub fn service_commands(cx: &App) -> Option<crate::shell::bar::service_worker::CommandSender> {
         if cx.has_global::<Self>() {
             cx.global::<Self>()
                 .service_hub()
@@ -444,7 +444,7 @@ impl ShellRuntime {
         }
     }
 
-    pub fn device_snapshot(cx: &App) -> crate::bar::service_worker::DeviceSnapshot {
+    pub fn device_snapshot(cx: &App) -> crate::shell::bar::service_worker::DeviceSnapshot {
         cx.global::<Self>()
             .service_hub()
             .map(|hub| hub.device_snapshot())

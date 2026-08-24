@@ -232,7 +232,7 @@ fn escape_kdl_string(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::{ActionId, Shortcut, ShortcutOrigin};
+    use crate::shell::actions::{ActionId, Shortcut, ShortcutOrigin};
 
     #[test]
     fn niri_kdl_rendering_and_modifier_translation() {

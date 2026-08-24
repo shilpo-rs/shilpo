@@ -7,14 +7,14 @@ use shilpo_m3e::{
 };
 use shilpo_services::{DomainLifecycle, WorkspaceInfo};
 
-use crate::actions::ActionInvocation;
-use crate::bar::cards::{
+use crate::shell::actions::ActionInvocation;
+use crate::shell::bar::cards::{
     adapter::CardCoordinator,
     model::{CardChannel, CardDismissReason, CardRequest, CardSourceState},
     workspace_card::{workspace_owner_id, workspace_source},
 };
-use crate::bar::widgets::pill_strip::PillOrientation;
-use crate::runtime::{ShellRuntime, ShellSurfaces};
+use crate::shell::bar::widgets::pill_strip::PillOrientation;
+use crate::shell::runtime::{ShellRuntime, ShellSurfaces};
 
 fn workspace_actions_enabled(connection: &DomainLifecycle) -> bool {
     matches!(connection, DomainLifecycle::Ready)
@@ -213,7 +213,7 @@ fn render_workspace_dot(
                 cx.stop_propagation();
                 ShellSurfaces::request(
                     cx,
-                    crate::runtime::SurfaceRequest::OpenOverviewOnDisplay(display_id),
+                    crate::shell::runtime::SurfaceRequest::OpenOverviewOnDisplay(display_id),
                 );
             })
             .into_any_element()
@@ -371,7 +371,7 @@ impl RenderOnce for WorkspacesWidget {
         }
 
         let active_indicator_element =
-            crate::bar::widgets::pill_strip::render_active_pill_indicator(
+            crate::shell::bar::widgets::pill_strip::render_active_pill_indicator(
                 &self.id,
                 active_workspace_index,
                 self.orientation,
@@ -463,7 +463,7 @@ mod tests {
     use gpui::Pixels;
 
     use super::*;
-    use crate::bar::widgets::pill_strip::{
+    use crate::shell::bar::widgets::pill_strip::{
         PILL_INDICATOR_SIZE, calculate_stretching_geometry, indicator_target,
     };
 

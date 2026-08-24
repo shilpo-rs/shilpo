@@ -8,7 +8,7 @@ use super::{
     model::{CardCapabilities, CardChannel, CardOwnerId, CardSourceId},
     provider::CardProvider,
 };
-use crate::runtime::ShellRuntime;
+use crate::shell::runtime::ShellRuntime;
 
 pub(crate) struct ExtensionMenuCardProvider {
     pub owner_id: CardOwnerId,

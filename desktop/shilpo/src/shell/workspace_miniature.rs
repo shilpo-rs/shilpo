@@ -8,7 +8,7 @@ use gpui::{
 use shilpo_m3e::{ActiveTheme, StyledExt};
 use shilpo_services::{WindowInfo, WorkspaceInfo};
 
-use crate::app_icons::{app_icon, resolve_app_icon_path};
+use crate::shell::app_icons::{app_icon, resolve_app_icon_path};
 
 /// Dimension constants for workspace miniature previews.
 pub(crate) const PREVIEW_WIDTH: f32 = 326.0;

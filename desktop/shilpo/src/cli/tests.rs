@@ -3,9 +3,9 @@ use std::fs;
 use clap::{CommandFactory, Parser};
 use tempfile::TempDir;
 
-use crate::adapters::ConfigMigrateAdapter;
-use crate::args::{Cli, Commands, ConfigCommands, ModeValue, ShellCommands, VisibilityAction};
-use crate::output::{CliOutput, EXIT_FAILURE, EXIT_INVALID_ARGS, JsonEnvelope, JsonError};
+use crate::cli::adapters::ConfigMigrateAdapter;
+use crate::cli::args::{Cli, Commands, ConfigCommands, ModeValue, ShellCommands, VisibilityAction};
+use crate::cli::output::{CliOutput, EXIT_FAILURE, EXIT_INVALID_ARGS, JsonEnvelope, JsonError};
 
 #[test]
 fn daemon_developer_mode_is_explicit_and_documented() {
@@ -121,7 +121,7 @@ fn test_cli_parser_ui_visibility_actions() {
 fn test_cli_parser_workspace_and_window() {
     let cli = Cli::try_parse_from(["shilpo", "workspace", "focus", "42"]).unwrap();
     if let Some(Commands::Workspace {
-        command: crate::args::WorkspaceCommands::Focus { id },
+        command: crate::cli::args::WorkspaceCommands::Focus { id },
     }) = cli.command
     {
         assert_eq!(id, 42);
@@ -133,7 +133,7 @@ fn test_cli_parser_workspace_and_window() {
     assert!(matches!(
         cli.command,
         Some(Commands::Workspace {
-            command: crate::args::WorkspaceCommands::Create
+            command: crate::cli::args::WorkspaceCommands::Create
         })
     ));
 
@@ -141,13 +141,13 @@ fn test_cli_parser_workspace_and_window() {
     assert!(matches!(
         cli.command,
         Some(Commands::Window {
-            command: crate::args::WindowCommands::FocusPrevious
+            command: crate::cli::args::WindowCommands::FocusPrevious
         })
     ));
 
     let cli = Cli::try_parse_from(["shilpo", "window", "move", "10", "--workspace", "3"]).unwrap();
     if let Some(Commands::Window {
-        command: crate::args::WindowCommands::Move { id, workspace },
+        command: crate::cli::args::WindowCommands::Move { id, workspace },
     }) = cli.command
     {
         assert_eq!(id, 10);
@@ -162,8 +162,8 @@ fn test_cli_parser_theme_and_doctor() {
     let cli = Cli::try_parse_from(["shilpo", "theme", "mode", "set", "dark"]).unwrap();
     if let Some(Commands::Theme {
         command:
-            crate::args::ThemeCommands::Mode {
-                action: crate::args::ThemeModeAction::Set { mode },
+            crate::cli::args::ThemeCommands::Mode {
+                action: crate::cli::args::ThemeModeAction::Set { mode },
             },
     }) = cli.command
     {
@@ -174,10 +174,13 @@ fn test_cli_parser_theme_and_doctor() {
 
     let cli = Cli::try_parse_from(["shilpo", "theme", "wallpaper", "get"]).unwrap();
     if let Some(Commands::Theme {
-        command: crate::args::ThemeCommands::Wallpaper { action },
+        command: crate::cli::args::ThemeCommands::Wallpaper { action },
     }) = cli.command
     {
-        assert!(matches!(action, crate::args::ThemeWallpaperAction::Get));
+        assert!(matches!(
+            action,
+            crate::cli::args::ThemeWallpaperAction::Get
+        ));
     } else {
         panic!("Expected Theme Wallpaper Get");
     }
@@ -427,7 +430,7 @@ fn test_cli_parser_config_validate_and_effective() {
 
 #[test]
 fn test_cli_config_missing_and_empty_primary_resolves_defaults_read_only() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
 
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("config.toml");
@@ -453,7 +456,7 @@ fn test_cli_config_missing_and_empty_primary_resolves_defaults_read_only() {
 
 #[test]
 fn test_cli_config_layered_precedence_order() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
 
     let dir = TempDir::new().unwrap();
     let primary = dir.path().join("config.toml");
@@ -477,7 +480,7 @@ fn test_cli_config_layered_precedence_order() {
 
 #[test]
 fn test_cli_config_unknown_keys_warning_contract() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
 
     let dir = TempDir::new().unwrap();
     let primary = dir.path().join("config.toml");
@@ -507,7 +510,7 @@ fn test_cli_config_unknown_keys_warning_contract() {
 
 #[test]
 fn test_cli_config_primary_syntax_failure_blocking() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
 
     let (_dir, primary) = cli_tmp_primary("version = 1\ninvalid = [toml syntax\n");
     let result = ConfigAdapter::validate(&primary);
@@ -526,7 +529,7 @@ fn test_cli_config_primary_syntax_failure_blocking() {
 
 #[test]
 fn test_cli_config_fragment_and_override_syntax_type_failures_blocking() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
 
     let dir = TempDir::new().unwrap();
     let primary = dir.path().join("config.toml");
@@ -559,7 +562,7 @@ fn test_cli_config_fragment_and_override_syntax_type_failures_blocking() {
 
 #[test]
 fn test_cli_config_semantic_validation_no_scoped_recovery() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
 
     let (_dir, primary) = cli_tmp_primary("version = 1\n[bar]\nheight = 1\n");
     let result = ConfigAdapter::validate(&primary);
@@ -571,7 +574,7 @@ fn test_cli_config_semantic_validation_no_scoped_recovery() {
 
 #[test]
 fn test_cli_config_version_migration_and_future_semantics() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
 
     // Missing version key in non-empty primary
     let (_dir, legacy) = cli_tmp_primary("[bar]\nheight = 40\n");
@@ -601,7 +604,7 @@ fn test_cli_config_version_migration_and_future_semantics() {
 
 #[test]
 fn test_cli_config_version_in_fragment_or_override_rejected() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
 
     let dir = TempDir::new().unwrap();
     let primary = dir.path().join("config.toml");
@@ -624,7 +627,7 @@ fn test_cli_config_version_in_fragment_or_override_rejected() {
 
 #[test]
 fn test_cli_config_effective_human_roundtrip() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
     use crate::config::ShellConfig;
 
     let (_dir, primary) = cli_tmp_primary("version = 1\n[theme]\nfont_family = \"Inter\"\n");
@@ -643,7 +646,7 @@ fn test_cli_config_effective_human_roundtrip() {
 
 #[test]
 fn test_cli_config_effective_origins_provenance_map() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
 
     let (_dir, primary) = cli_tmp_primary("version = 1\n[theme]\nfont_family = \"Inter\"\n");
     let res = ConfigAdapter::effective(&primary, true);
@@ -657,7 +660,7 @@ fn test_cli_config_effective_origins_provenance_map() {
 
 #[test]
 fn test_cli_config_json_envelopes_contract() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
 
     let (_dir, primary) = cli_tmp_primary("version = 1\n");
     let res = ConfigAdapter::validate(&primary);
@@ -676,7 +679,7 @@ fn test_cli_config_json_envelopes_contract() {
 
 #[test]
 fn test_cli_config_quiet_mode_suppression() {
-    use crate::output::CliOutput;
+    use crate::cli::output::CliOutput;
 
     let output = CliOutput::new(false, true).unwrap();
     let data = serde_json::json!({ "valid": true });
@@ -691,7 +694,7 @@ fn test_cli_config_quiet_mode_suppression() {
 
 #[test]
 fn test_cli_config_read_only_invariants() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
 
     let dir = TempDir::new().unwrap();
     let primary = dir.path().join("config.toml");
@@ -714,7 +717,7 @@ fn test_cli_config_read_only_invariants() {
 
 #[test]
 fn test_cli_config_adapter_uses_shared_resolver_seam() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
     use crate::config::ConfigResolver;
 
     let (_dir, primary) = cli_tmp_primary("version = 1\n[bar]\nheight = 50\n");
@@ -731,7 +734,7 @@ fn test_cli_config_adapter_uses_shared_resolver_seam() {
 
 #[test]
 fn test_cli_config_whitespace_primary_is_default_and_read_only() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
 
     let dir = TempDir::new().unwrap();
     let primary = dir.path().join("config.toml");
@@ -746,7 +749,7 @@ fn test_cli_config_whitespace_primary_is_default_and_read_only() {
 
 #[test]
 fn test_cli_config_errors_identify_fragment_or_override_source() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
 
     let dir = TempDir::new().unwrap();
     let primary = dir.path().join("config.toml");
@@ -767,7 +770,7 @@ fn test_cli_config_errors_identify_fragment_or_override_source() {
 
 #[test]
 fn test_cli_config_effective_toml_is_deterministic_for_dynamic_maps() {
-    use crate::adapters::ConfigAdapter;
+    use crate::cli::adapters::ConfigAdapter;
 
     let dir = TempDir::new().unwrap();
     let primary = dir.path().join("config.toml");
@@ -791,7 +794,7 @@ fn test_cli_config_effective_toml_is_deterministic_for_dynamic_maps() {
 fn test_cli_parser_ext_build() {
     use std::path::PathBuf;
 
-    use crate::args::ExtCommands;
+    use crate::cli::args::ExtCommands;
 
     let cli = Cli::try_parse_from(["shilpo", "ext", "build"]).unwrap();
     assert!(matches!(
@@ -819,7 +822,7 @@ fn test_cli_parser_ext_build() {
 
 #[test]
 fn test_cli_ext_build_adapter_success_and_json_envelope() {
-    use crate::adapters::ExtAdapter;
+    use crate::cli::adapters::ExtAdapter;
 
     let dir = TempDir::new().unwrap();
     let project_dir = dir.path();
@@ -882,8 +885,8 @@ fn test_cli_ext_build_adapter_success_and_json_envelope() {
 
 #[test]
 fn test_cli_ext_build_adapter_failure_and_json_envelope() {
-    use crate::adapters::ExtAdapter;
-    use crate::output::JsonError;
+    use crate::cli::adapters::ExtAdapter;
+    use crate::cli::output::JsonError;
 
     let dir = TempDir::new().unwrap();
     let empty_dir = dir.path();
@@ -913,7 +916,7 @@ fn test_cli_ext_build_adapter_failure_and_json_envelope() {
 
 #[test]
 fn test_cli_parser_ext_new_view_syntax() {
-    use crate::args::{
+    use crate::cli::args::{
         ExtCommands, StarterContributionValue, StarterLanguageValue, ViewSyntaxValue,
     };
 
@@ -985,7 +988,7 @@ fn test_cli_parser_ext_new_view_syntax() {
 fn test_cli_ext_new_adapter_view_syntax_scaffolding() {
     use shilpo_ext_runtime::{StarterContribution, StarterLanguage, ViewSyntax};
 
-    use crate::adapters::ExtAdapter;
+    use crate::cli::adapters::ExtAdapter;
 
     let dir = TempDir::new().unwrap();
     let target_jsx = dir.path().join("widget-jsx");

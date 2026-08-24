@@ -11,8 +11,8 @@ use shilpo_m3e::{
 };
 use shilpo_services::Notification;
 
-use crate::runtime::ShellRuntime;
-use crate::runtime::shell_surfaces::NotificationLifecycleCallback;
+use crate::shell::runtime::ShellRuntime;
+use crate::shell::runtime::shell_surfaces::NotificationLifecycleCallback;
 
 #[derive(Clone)]
 pub(crate) struct ToastEntry {

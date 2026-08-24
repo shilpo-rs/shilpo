@@ -13,7 +13,7 @@ use super::{
         SearchCandidate, SearchError, SearchProvider, SearchRequest, SearchResultIcon,
     },
 };
-use crate::actions::ActionDescriptor;
+use crate::shell::actions::ActionDescriptor;
 
 /// Provider that searches available desktop and system actions.
 #[derive(Clone)]
@@ -103,7 +103,7 @@ impl SearchProvider for ActionSearchProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::{ActionCategory, ActionId, ActionInputRequirement};
+    use crate::shell::actions::{ActionCategory, ActionId, ActionInputRequirement};
     use crate::shell::overview_search::sink::SinkConfig;
 
     fn sample_actions() -> Vec<ActionDescriptor> {

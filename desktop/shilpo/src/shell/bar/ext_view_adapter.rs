@@ -13,7 +13,7 @@ use shilpo_m3e::{
     slider::{Slider, SliderEvent, SliderState, SliderValue},
 };
 
-use crate::runtime::ShellRuntime;
+use crate::shell::runtime::ShellRuntime;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ContainerDescriptor {
@@ -904,7 +904,7 @@ mod tests {
         let events: Vec<_> = inputs
             .iter()
             .filter_map(|command| match command {
-                crate::extensions::ExtensionCommand::Input {
+                crate::shell::extensions::ExtensionCommand::Input {
                     event_id, value, ..
                 } => Some((event_id.as_str(), value.is_none())),
                 _ => None,
@@ -931,14 +931,16 @@ mod tests {
     }
 
     fn recorded_event_ids(
-        recorder: &std::sync::Arc<std::sync::Mutex<Vec<crate::extensions::ExtensionCommand>>>,
+        recorder: &std::sync::Arc<
+            std::sync::Mutex<Vec<crate::shell::extensions::ExtensionCommand>>,
+        >,
     ) -> Vec<String> {
         recorder
             .lock()
             .unwrap()
             .iter()
             .filter_map(|command| match command {
-                crate::extensions::ExtensionCommand::Input { event_id, .. } => {
+                crate::shell::extensions::ExtensionCommand::Input { event_id, .. } => {
                     Some(event_id.clone())
                 }
                 _ => None,

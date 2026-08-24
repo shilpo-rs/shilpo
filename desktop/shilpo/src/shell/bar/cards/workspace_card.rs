@@ -14,7 +14,7 @@ use super::{
     model::{CardCapabilities, CardChannel, CardOwnerId, CardSourceId},
     provider::CardProvider,
 };
-use crate::{
+use crate::shell::{
     runtime::{ShellRuntime, ShellSurfaces},
     workspace_miniature::{
         PREVIEW_HEIGHT, PREVIEW_WIDTH, WorkspaceMiniature, WorkspaceMiniatureModel,
@@ -65,7 +65,9 @@ impl WorkspacePreviewProvider {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         if cache.applications != applications {
-            cache.index = Arc::new(crate::app_icons::build_app_icon_index(applications.clone()));
+            cache.index = Arc::new(crate::shell::app_icons::build_app_icon_index(
+                applications.clone(),
+            ));
             cache.applications = applications;
         }
         cache.index.clone()
@@ -137,7 +139,7 @@ impl CardProvider for WorkspacePreviewProvider {
         let wallpaper_snapshot = if cx.has_global::<ShellRuntime>() {
             ShellRuntime::wallpaper_preview_snapshot(cx)
         } else {
-            crate::runtime::WallpaperPreviewSnapshot::Empty
+            crate::shell::runtime::WallpaperPreviewSnapshot::Empty
         };
         let wallpaper_source: Option<ImageSource> =
             wallpaper_snapshot.ready_image().map(ImageSource::from);
