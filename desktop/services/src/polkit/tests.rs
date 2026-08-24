@@ -5,11 +5,12 @@ use shilpo_domain::{CancellationReason, DomainLifecycle, SupervisorState, TimeSo
 use tokio::sync::oneshot;
 
 use super::agent::AuthorityClient;
-use super::helper::{HelperEvent, MockPolkitHelper, zeroize_bytes, zeroize_string};
+use super::helper::{HelperEvent, MockPolkitHelper};
 use super::state::{PolkitDomainState, SUCCESS_DISMISS_DELAY_MS};
 use super::types::{
     PolkitCommand, PolkitCommandOutcome, PolkitIdentity, PolkitRejectionReason, PolkitRequest,
 };
+use crate::secret::{SecretString, zeroize_bytes, zeroize_string};
 
 #[derive(Debug, Clone, Default)]
 struct ManualClock {
@@ -83,7 +84,7 @@ fn test_helper_state_machine_echo_off_success() {
     let ticket = state
         .submit_command(PolkitCommand::ProvideResponse {
             cookie: "cookie-123".to_string(),
-            response: "alice_password".to_string(),
+            response: "alice_password".to_string().into(),
         })
         .unwrap();
 
@@ -175,7 +176,7 @@ fn test_helper_state_machine_echo_on_and_text_info() {
     state
         .submit_command(PolkitCommand::ProvideResponse {
             cookie: "cookie-456".to_string(),
-            response: "1234".to_string(),
+            response: "1234".to_string().into(),
         })
         .unwrap();
 
@@ -214,7 +215,7 @@ fn test_helper_state_machine_failure_and_retry() {
     state
         .submit_command(PolkitCommand::ProvideResponse {
             cookie: "cookie-retry-1".to_string(),
-            response: "wrong_password".to_string(),
+            response: "wrong_password".to_string().into(),
         })
         .unwrap();
 
@@ -257,7 +258,7 @@ fn test_helper_state_machine_failure_and_retry() {
     state2
         .submit_command(PolkitCommand::ProvideResponse {
             cookie: "cookie-retry-2".to_string(),
-            response: "correct_password".to_string(),
+            response: "correct_password".to_string().into(),
         })
         .unwrap();
 
@@ -376,7 +377,7 @@ fn test_inactivity_timeout_and_timer_reset() {
     state
         .submit_command(PolkitCommand::ProvideResponse {
             cookie: "cookie-inactivity".to_string(),
-            response: "typo".to_string(),
+            response: "typo".to_string().into(),
         })
         .unwrap();
 
@@ -451,7 +452,7 @@ fn test_multi_identity_selection() {
     state
         .submit_command(PolkitCommand::ProvideResponse {
             cookie: "cookie-multi".to_string(),
-            response: "root_secret".to_string(),
+            response: "root_secret".to_string().into(),
         })
         .unwrap();
 
@@ -617,11 +618,47 @@ fn test_domain_version_fencing_rejects_stale_generation_commands() {
 fn test_provide_response_debug_output_redacts_password() {
     let command = PolkitCommand::ProvideResponse {
         cookie: "cookie-debug".to_string(),
-        response: "SuperSecretPassword123!".to_string(),
+        response: "SuperSecretPassword123!".to_string().into(),
     };
     let debug_str = format!("{command:?}");
     assert!(!debug_str.contains("SuperSecretPassword123!"));
     assert!(debug_str.contains("<redacted>"));
+}
+
+#[test]
+fn queued_response_is_zeroized_when_owner_is_replaced() {
+    let clock = Arc::new(ManualClock::new());
+    let helper = Arc::new(MockPolkitHelper::new(vec![]));
+    let state = PolkitDomainState::with_time_source(4, helper, clock.clone(), 120_000);
+    state.begin_start();
+    state.mark_ready(clock.now_ms());
+    let (response, wipe) = SecretString::new_observed_for_test("polkit-password");
+
+    state
+        .enqueue_command(PolkitCommand::ProvideResponse {
+            cookie: "cookie".into(),
+            response,
+        })
+        .expect("queued response");
+    state.begin_start();
+    state.process_pending_commands();
+
+    assert_eq!(wipe.bytes(), Some(vec![0; "polkit-password".len()]));
+}
+
+#[test]
+fn response_command_serde_remains_string_shaped() {
+    let command = PolkitCommand::ProvideResponse {
+        cookie: "cookie".into(),
+        response: "serde-password".into(),
+    };
+    let json = serde_json::to_string(&command).unwrap();
+    assert_eq!(
+        json,
+        r#"{"ProvideResponse":{"cookie":"cookie","response":"serde-password"}}"#
+    );
+    let round_trip: PolkitCommand = serde_json::from_str(&json).unwrap();
+    assert_eq!(round_trip, command);
 }
 
 fn dict_str(

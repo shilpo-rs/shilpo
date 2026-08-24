@@ -12,15 +12,17 @@
 //! rejection, mailbox overflow, `ReplaceLatest` supersession, exactly-one-terminal-outcome,
 //! and supervisor backoff/quarantine — are covered directly below instead.
 
+use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::helper::{AuthHelperEvent, MockAuthHelper};
+use super::helper::{AuthHelper, AuthHelperEvent, AuthHelperSession, MockAuthHelper};
 use super::state::AuthDomainState;
 use super::types::{
     AuthCommand, AuthCommandOutcome, AuthOutcome, AuthRejectionReason, CancellationReason,
     DomainLifecycle, SupervisorState, TimeSource,
 };
+use crate::secret::SecretString;
 
 #[derive(Debug, Clone, Default)]
 struct TestClock {
@@ -230,6 +232,110 @@ fn error_msg_and_text_info_are_supplementary_not_prompts() {
 // -----------------------------------------------------------------------
 
 #[test]
+fn queued_response_is_zeroized_when_owner_is_replaced() {
+    let (state, _helper, _clock) = setup();
+    let (response, wipe) = SecretString::new_observed_for_test("superseded-password");
+
+    state
+        .submit_command(AuthCommand::ProvideResponse { response })
+        .expect("queued response");
+    state.begin_start();
+
+    assert_eq!(wipe.bytes(), Some(vec![0; "superseded-password".len()]));
+}
+
+#[test]
+fn rejected_response_is_zeroized() {
+    let (state, _helper, _clock) = setup();
+    let (response, wipe) = SecretString::new_observed_for_test("rejected-password");
+
+    let outcome = submit_and_process(&state, AuthCommand::ProvideResponse { response });
+
+    assert_eq!(
+        outcome,
+        AuthCommandOutcome::Rejected {
+            reason: AuthRejectionReason::NotAuthenticating
+        }
+    );
+    assert_eq!(wipe.bytes(), Some(vec![0; "rejected-password".len()]));
+}
+
+#[test]
+fn successful_response_is_zeroized_after_helper_write() {
+    let (state, helper, _clock) = setup();
+    helper.queue_session(vec![AuthHelperEvent::PromptEchoOff("Password:".into())]);
+    submit_and_process(
+        &state,
+        AuthCommand::BeginAuthentication {
+            service: "login".into(),
+        },
+    );
+    let (response, wipe) = SecretString::new_observed_for_test("accepted-password");
+
+    let outcome = submit_and_process(&state, AuthCommand::ProvideResponse { response });
+
+    assert!(matches!(outcome, AuthCommandOutcome::Applied { .. }));
+    assert_eq!(wipe.bytes(), Some(vec![0; "accepted-password".len()]));
+}
+
+struct WriteFailingHelper;
+
+impl AuthHelper for WriteFailingHelper {
+    fn spawn_session(&self, _service: &str) -> io::Result<Box<dyn AuthHelperSession>> {
+        Ok(Box::new(WriteFailingSession { first_event: true }))
+    }
+}
+
+struct WriteFailingSession {
+    first_event: bool,
+}
+
+impl AuthHelperSession for WriteFailingSession {
+    fn write_response(&mut self, _response: &str) -> io::Result<()> {
+        Err(io::Error::other("injected write failure"))
+    }
+
+    fn try_recv_event(&mut self) -> Option<AuthHelperEvent> {
+        self.first_event.then(|| {
+            self.first_event = false;
+            AuthHelperEvent::PromptEchoOff("Password:".into())
+        })
+    }
+
+    fn kill(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn write_error_response_is_zeroized() {
+    let state = AuthDomainState::new_ready_for_test(8, Arc::new(WriteFailingHelper));
+    submit_and_process(
+        &state,
+        AuthCommand::BeginAuthentication {
+            service: "login".into(),
+        },
+    );
+    let (response, wipe) = SecretString::new_observed_for_test("write-error-password");
+
+    let outcome = submit_and_process(&state, AuthCommand::ProvideResponse { response });
+
+    assert!(matches!(outcome, AuthCommandOutcome::Applied { .. }));
+    assert_eq!(wipe.bytes(), Some(vec![0; "write-error-password".len()]));
+}
+
+#[test]
+fn response_command_serde_remains_string_shaped() {
+    let command = AuthCommand::ProvideResponse {
+        response: "serde-password".into(),
+    };
+    let json = serde_json::to_string(&command).unwrap();
+    assert_eq!(json, r#"{"ProvideResponse":{"response":"serde-password"}}"#);
+    let round_trip: AuthCommand = serde_json::from_str(&json).unwrap();
+    assert_eq!(round_trip, command);
+}
+
+#[test]
 fn provide_response_debug_output_redacts_password() {
     let command = AuthCommand::ProvideResponse {
         response: "super-secret".into(),
@@ -296,15 +402,15 @@ fn lossless_mailbox_rejects_overflow() {
             })
             .expect("accepted under capacity");
     }
-    let rejected = state.submit_command(AuthCommand::ProvideResponse {
-        response: "overflow".into(),
-    });
+    let (response, wipe) = SecretString::new_observed_for_test("overflow-password");
+    let rejected = state.submit_command(AuthCommand::ProvideResponse { response });
     assert!(matches!(
         rejected,
         Err(AuthCommandOutcome::Rejected {
             reason: AuthRejectionReason::Overloaded
         })
     ));
+    assert_eq!(wipe.bytes(), Some(vec![0; "overflow-password".len()]));
     let _ = helper; // helper unused directly; kept for setup() destructuring symmetry
 }
 

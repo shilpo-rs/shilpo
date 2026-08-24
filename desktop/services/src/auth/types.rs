@@ -9,6 +9,8 @@ pub use shilpo_domain::{
 };
 use tokio::sync::watch;
 
+use crate::secret::SecretString;
+
 /// The current prompt / supplementary state presented to the user. Mirrors
 /// `PolkitPromptState`, since PAM and polkit-agent-helper-1 both surface the same four
 /// PAM message styles.
@@ -83,7 +85,7 @@ pub enum AuthCommand {
     BeginAuthentication { service: String },
     /// Provides a response string (e.g. password) to the active prompt. Note: when
     /// processed, this memory is zeroed immediately.
-    ProvideResponse { response: String },
+    ProvideResponse { response: SecretString },
     /// Cancels the active authentication attempt, if any.
     CancelAuthentication,
     /// Resets supervisor quarantine.
@@ -240,7 +242,9 @@ pub trait AuthPort: Send + Sync {
     }
 
     fn provide_response(&self, response: String) {
-        let _ = self.submit_command(AuthCommand::ProvideResponse { response });
+        let _ = self.submit_command(AuthCommand::ProvideResponse {
+            response: response.into(),
+        });
     }
 
     fn cancel_authentication(&self) {
