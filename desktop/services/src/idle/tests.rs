@@ -343,6 +343,68 @@ fn test_inhibits_cookie_accounting_and_action_suppression() {
 }
 
 #[test]
+fn screensaver_uninhibit_matches_protocol_identity_not_metadata() {
+    let (state, _, _, _) = setup_test_domain(0.0);
+
+    state
+        .submit_command(IdleCommand::AddInhibit {
+            source: InhibitSource::ScreenSaver {
+                cookie: 42,
+                app: "firefox".into(),
+                reason: "video playback".into(),
+                sender: ":1.100".into(),
+            },
+        })
+        .unwrap();
+    state.process_pending_commands();
+
+    state
+        .submit_command(IdleCommand::RemoveInhibit {
+            source: InhibitSource::ScreenSaver {
+                cookie: 42,
+                app: String::new(),
+                reason: String::new(),
+                sender: ":1.100".into(),
+            },
+        })
+        .unwrap();
+    state.process_pending_commands();
+
+    assert_eq!(state.snapshot().inhibit_count, 0);
+}
+
+#[test]
+fn screensaver_uninhibit_cannot_release_another_senders_cookie() {
+    let (state, _, _, _) = setup_test_domain(0.0);
+
+    state
+        .submit_command(IdleCommand::AddInhibit {
+            source: InhibitSource::ScreenSaver {
+                cookie: 42,
+                app: "firefox".into(),
+                reason: "video playback".into(),
+                sender: ":1.100".into(),
+            },
+        })
+        .unwrap();
+    state.process_pending_commands();
+
+    state
+        .submit_command(IdleCommand::RemoveInhibit {
+            source: InhibitSource::ScreenSaver {
+                cookie: 42,
+                app: String::new(),
+                reason: String::new(),
+                sender: ":1.101".into(),
+            },
+        })
+        .unwrap();
+    state.process_pending_commands();
+
+    assert_eq!(state.snapshot().inhibit_count, 1);
+}
+
+#[test]
 fn test_sender_disconnect_clears_inhibits() {
     let (state, _, _, _) = setup_test_domain(2.0);
 

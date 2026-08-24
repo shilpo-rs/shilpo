@@ -568,7 +568,9 @@ impl IdleDomainState {
                 }
                 IdleCommand::RemoveInhibit { source } => {
                     let prev_count = guard.inhibit_sources.len();
-                    guard.inhibit_sources.retain(|s| s != &source);
+                    guard
+                        .inhibit_sources
+                        .retain(|candidate| !candidate.same_identity(&source));
                     let new_count = guard.inhibit_sources.len();
 
                     // If last inhibit was released, recreate all notifications
