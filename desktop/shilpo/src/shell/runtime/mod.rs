@@ -371,7 +371,8 @@ impl ShellRuntime {
         dbus_connection: zbus::Connection,
         instance_id: String,
     ) {
-        let initial_wallpaper_path = theme_manager::init(cx);
+        let initial_theme = theme_manager::init(cx);
+        let initial_wallpaper_path = initial_theme.wallpaper_path.clone();
         let session = session::SessionContext::init();
         let (hub, streams) = ServiceHub::start(cx.background_executor().clone(), &session);
         let extensions = ExtensionCoordinator::init(cx.background_executor().clone()).map(Arc::new);
@@ -437,6 +438,9 @@ impl ShellRuntime {
         cx.global::<Self>()
             .dbus_service
             .prime_workspace(latest_snapshot.focused_workspace_id.unwrap_or(0));
+        cx.global::<Self>()
+            .dbus_service
+            .prime_theme(&initial_theme.mode, &initial_theme.scheme_variant);
 
         shell_surfaces::spawn_compositor_stream_loop(cx, &compositor);
         theme_manager::sync_wallpaper(cx, initial_wallpaper_path);

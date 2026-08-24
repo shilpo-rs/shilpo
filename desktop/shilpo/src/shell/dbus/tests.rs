@@ -573,7 +573,10 @@ async fn test_theme_changed_dedup_semantics() {
     .unwrap();
     let emitter = harness.signal_emitter().await;
 
-    // First call populates initial state and emits nothing
+    // Startup priming means the authoritative initial state is already known.
+    harness.shell_service.prime_theme("dark", "Expressive");
+
+    // Repeating the primed state emits nothing.
     bounded!(
         "initial theme emission",
         harness
