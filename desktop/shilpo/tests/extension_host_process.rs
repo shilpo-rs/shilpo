@@ -30,7 +30,6 @@ fn ext_status_json_preserves_error_envelope_when_daemon_is_unavailable() {
 }
 
 #[test]
-#[ignore = "requires a live DBus Secret Service; see #244"]
 fn real_extension_host_publishes_snapshot_and_acknowledges_shutdown() {
     let temp_dir =
         std::env::temp_dir().join(format!("shilpo-ext-host-test-{}", std::process::id()));
@@ -43,6 +42,10 @@ fn real_extension_host_publishes_snapshot_and_acknowledges_shutdown() {
         .arg("extension-host")
         .env("XDG_DATA_HOME", &data_dir)
         .env("XDG_CONFIG_HOME", &config_dir)
+        .env(
+            "DBUS_SESSION_BUS_ADDRESS",
+            format!("unix:path={}", temp_dir.join("no-session-bus").display()),
+        )
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())

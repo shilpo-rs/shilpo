@@ -777,12 +777,7 @@ impl WasmRuntime {
 
     pub fn new_with_paths(paths: &crate::catalog::CatalogPaths) -> Result<Self, RuntimeError> {
         let broker: Arc<dyn crate::secrets::SecretBroker> =
-            Arc::new(crate::secrets::Oo7SecretBroker::new().map_err(|error| {
-                RuntimeError::with_kind(
-                    RuntimeFailureKind::Unavailable,
-                    format!("failed to initialize Secret Service: {error}"),
-                )
-            })?);
+            Arc::new(crate::secrets::Oo7SecretBroker::new());
         let state_store =
             crate::state::HeedStateStore::open(&paths.state_store_dir()).map_err(|error| {
                 RuntimeError::with_kind(
