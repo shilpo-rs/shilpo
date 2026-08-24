@@ -16,6 +16,19 @@ pub struct SecretString {
 }
 
 impl SecretString {
+    /// Adopt an owned UTF-8 byte allocation without copying it.
+    pub fn from_utf8(mut bytes: Vec<u8>) -> Result<Self, std::str::Utf8Error> {
+        if let Err(error) = std::str::from_utf8(&bytes) {
+            bytes.zeroize();
+            return Err(error);
+        }
+        Ok(Self {
+            bytes,
+            #[cfg(test)]
+            wipe_observation: None,
+        })
+    }
+
     pub fn as_str(&self) -> &str {
         std::str::from_utf8(&self.bytes).expect("SecretString preserves UTF-8")
     }
@@ -130,5 +143,21 @@ impl WipeObservation {
 
     pub(crate) fn bytes(&self) -> Option<Vec<u8>> {
         self.0.lock().unwrap().clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SecretString;
+
+    #[test]
+    fn from_utf8_adopts_the_allocation_without_copying() {
+        let bytes = b"moved-sensitive-response".to_vec();
+        let allocation = bytes.as_ptr();
+
+        let secret = SecretString::from_utf8(bytes).unwrap();
+
+        assert_eq!(secret.as_str(), "moved-sensitive-response");
+        assert_eq!(secret.as_str().as_ptr(), allocation);
     }
 }
