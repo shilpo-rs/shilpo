@@ -212,6 +212,11 @@ impl ShellDbusService {
         *self.last_workspace.lock().unwrap() = Some((workspace_id, 0, 0));
     }
 
+    /// Seeds the deduplication state with the authoritative initial theme snapshot.
+    pub fn prime_theme(&self, mode: &str, scheme_variant: &str) {
+        *self.last_theme.lock().unwrap() = Some((mode.to_owned(), scheme_variant.to_owned()));
+    }
+
     pub async fn emit_theme_changed_if_needed(
         &self,
         emitter: &SignalEmitter<'_>,

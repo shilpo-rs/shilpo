@@ -78,6 +78,13 @@ pub struct ThemeTransition {
     pub duration_ms: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitialThemeState {
+    pub wallpaper_path: Option<PathBuf>,
+    pub mode: String,
+    pub scheme_variant: String,
+}
+
 impl ThemeTransition {
     pub fn new(
         generation: u64,
@@ -111,10 +118,10 @@ impl ThemeTransition {
     }
 }
 
-pub fn init(cx: &mut App) -> Option<PathBuf> {
+pub fn init(cx: &mut App) -> InitialThemeState {
     let theme_client = futures_lite::future::block_on(ThemeClient::new());
     let initial_theme_state = theme_client.current_state();
-    let initial_wallpaper_path = initial_theme_state
+    let wallpaper_path = initial_theme_state
         .wallpaper_path
         .clone()
         .filter(|path| path.is_file());
@@ -167,6 +174,12 @@ pub fn init(cx: &mut App) -> Option<PathBuf> {
                 if target_colors == start_colors {
                     TRANSITION_GATE.supersede();
                     shilpo_m3e::Theme::global_mut(cx).apply_state(&state);
+                    ShellSurfaces::apply_theme_state(cx, &state);
+                    super::ShellRuntime::emit_theme_signal(
+                        cx,
+                        state.resolved_mode.as_str().into(),
+                        format!("{:?}", state.resolved_variant),
+                    );
                     TRANSITION_GATE.commit_revision(state.revision);
                     return None;
                 }
@@ -262,7 +275,11 @@ pub fn init(cx: &mut App) -> Option<PathBuf> {
     })
     .detach();
 
-    initial_wallpaper_path
+    InitialThemeState {
+        wallpaper_path,
+        mode: initial_theme_state.resolved_mode.as_str().to_owned(),
+        scheme_variant: format!("{:?}", initial_theme_state.resolved_variant),
+    }
 }
 
 pub fn sync_wallpaper(cx: &mut App, initial_wallpaper_path: Option<PathBuf>) {
@@ -306,7 +323,12 @@ mod tests {
             assert_eq!(theme.source_argb, expected_state.source_argb);
             assert_eq!(theme.scheme_variant, expected_state.scheme_variant);
         });
-        assert_eq!(wallpaper, expected_wallpaper);
+        assert_eq!(wallpaper.wallpaper_path, expected_wallpaper);
+        assert_eq!(wallpaper.mode, expected_state.resolved_mode.as_str());
+        assert_eq!(
+            wallpaper.scheme_variant,
+            format!("{:?}", expected_state.resolved_variant)
+        );
     }
 
     #[test]
