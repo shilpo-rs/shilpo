@@ -4,8 +4,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use shilpo_domain::{CancellationReason, DomainLifecycle, SupervisorState, TimeSource};
 use tokio::sync::oneshot;
 
-use super::agent::AuthorityClient;
-use super::helper::{HelperEvent, MockPolkitHelper};
+use super::agent::{AuthorityClient, authorize_polkit_caller_with};
+use super::helper::{HelperEvent, MockPolkitHelper, probe_system_helper_path};
 use super::state::{PolkitDomainState, SUCCESS_DISMISS_DELAY_MS};
 use super::types::{
     PolkitCommand, PolkitCommandOutcome, PolkitIdentity, PolkitRejectionReason, PolkitRequest,
@@ -33,6 +33,50 @@ impl TimeSource for ManualClock {
     fn now_ms(&self) -> u64 {
         self.now_ms.load(Ordering::SeqCst)
     }
+}
+
+#[tokio::test]
+async fn test_polkit_caller_authorization_accepts_root() {
+    let result = authorize_polkit_caller_with(Some(":1.42"), |_| async { Ok(0) }).await;
+    assert!(result.is_ok(), "polkitd's root caller must be accepted");
+}
+
+#[tokio::test]
+async fn test_polkit_caller_authorization_rejects_non_root() {
+    let result = authorize_polkit_caller_with(Some(":1.42"), |_| async { Ok(1000) }).await;
+    assert!(matches!(result, Err(zbus::fdo::Error::AccessDenied(_))));
+}
+
+#[tokio::test]
+async fn test_polkit_caller_authorization_fails_closed_without_sender() {
+    let result = authorize_polkit_caller_with(None, |_| async { Ok(0) }).await;
+    assert!(matches!(result, Err(zbus::fdo::Error::AccessDenied(_))));
+}
+
+#[tokio::test]
+async fn test_polkit_caller_authorization_fails_closed_on_uid_lookup_error() {
+    let result = authorize_polkit_caller_with(Some(":1.42"), |_| async {
+        Err("D-Bus daemon unavailable".to_string())
+    })
+    .await;
+    assert!(matches!(result, Err(zbus::fdo::Error::AccessDenied(_))));
+}
+
+#[test]
+fn test_production_helper_probe_ignores_environment_override() {
+    let temp = tempfile::NamedTempFile::new().unwrap();
+    // SAFETY: nextest runs each test in its own process, so mutating a
+    // process-global env var here cannot race with another test.
+    unsafe {
+        std::env::set_var("POLKIT_AGENT_HELPER_1_PATH", temp.path());
+    }
+
+    let resolved = probe_system_helper_path();
+
+    unsafe {
+        std::env::remove_var("POLKIT_AGENT_HELPER_1_PATH");
+    }
+    assert_ne!(resolved.as_deref(), Some(temp.path()));
 }
 
 #[test]

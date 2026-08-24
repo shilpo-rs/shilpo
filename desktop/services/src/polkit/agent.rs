@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 use std::ffi::CStr;
+use std::future::Future;
 use std::mem::MaybeUninit;
 use std::sync::Arc;
 
-use zbus::interface;
+use zbus::fdo::DBusProxy;
+use zbus::message::Header;
 use zbus::zvariant::{self, OwnedValue, Value};
+use zbus::{Connection, interface};
 
 use super::state::PolkitDomainState;
 use super::types::{PolkitIdentity, PolkitRequest};
@@ -146,6 +149,53 @@ impl PolkitAgentServer {
     }
 }
 
+/// Authorizes a PolicyKit agent method caller through an injectable UID
+/// resolver. Keeping the resolver outside the policy decision makes the
+/// security boundary deterministic in tests without a real system bus.
+pub(crate) async fn authorize_polkit_caller_with<F, Fut>(
+    sender: Option<&str>,
+    resolve_uid: F,
+) -> zbus::fdo::Result<()>
+where
+    F: FnOnce(String) -> Fut,
+    Fut: Future<Output = Result<u32, String>>,
+{
+    let sender = sender.ok_or_else(|| {
+        zbus::fdo::Error::AccessDenied("PolicyKit caller has no D-Bus sender".into())
+    })?;
+    let uid = resolve_uid(sender.to_owned()).await.map_err(|_| {
+        zbus::fdo::Error::AccessDenied("could not verify PolicyKit caller identity".into())
+    })?;
+    if uid != 0 {
+        return Err(zbus::fdo::Error::AccessDenied(
+            "PolicyKit agent methods are restricted to root callers".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn authorize_polkit_caller(
+    header: &Header<'_>,
+    connection: &Connection,
+) -> zbus::fdo::Result<()> {
+    authorize_polkit_caller_with(
+        header.sender().map(|sender| sender.as_str()),
+        |sender| async move {
+            let proxy = DBusProxy::new(connection)
+                .await
+                .map_err(|err| err.to_string())?;
+            let bus_name = sender
+                .try_into()
+                .map_err(|err: zbus::names::Error| err.to_string())?;
+            proxy
+                .get_connection_unix_user(bus_name)
+                .await
+                .map_err(|err| err.to_string())
+        },
+    )
+    .await
+}
+
 #[interface(name = "org.freedesktop.PolicyKit1.AuthenticationAgent")]
 impl PolkitAgentServer {
     /// Authority calls `BeginAuthentication` to request user authentication.
@@ -154,6 +204,8 @@ impl PolkitAgentServer {
     #[allow(clippy::too_many_arguments)]
     async fn begin_authentication(
         &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &Connection,
         action_id: String,
         message: String,
         icon_name: String,
@@ -161,6 +213,8 @@ impl PolkitAgentServer {
         cookie: String,
         identities: Vec<(String, HashMap<String, OwnedValue>)>,
     ) -> zbus::fdo::Result<()> {
+        authorize_polkit_caller(&header, connection).await?;
+
         let typed_identities = parse_polkit_identities(identities);
         let (tx, rx) = tokio::sync::oneshot::channel();
 
@@ -189,7 +243,13 @@ impl PolkitAgentServer {
     }
 
     /// Authority calls `CancelAuthentication` when an authentication request is cancelled.
-    async fn cancel_authentication(&self, cookie: String) -> zbus::fdo::Result<()> {
+    async fn cancel_authentication(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &Connection,
+        cookie: String,
+    ) -> zbus::fdo::Result<()> {
+        authorize_polkit_caller(&header, connection).await?;
         self.state.cancel_authentication(&cookie);
         Ok(())
     }

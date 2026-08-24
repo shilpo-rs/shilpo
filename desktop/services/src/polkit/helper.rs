@@ -55,13 +55,6 @@ pub const KNOWN_HELPER_PATHS: &[&str] = &[
 
 /// Probes for the system `polkit-agent-helper-1` binary.
 pub fn probe_system_helper_path() -> Option<PathBuf> {
-    if let Ok(override_path) = std::env::var("POLKIT_AGENT_HELPER_1_PATH") {
-        let p = PathBuf::from(override_path);
-        if p.exists() {
-            return Some(p);
-        }
-    }
-
     for path in KNOWN_HELPER_PATHS {
         let p = Path::new(path);
         if p.exists() {
