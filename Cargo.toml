@@ -23,7 +23,7 @@ shilpo = { path = "desktop/shilpo" }
 # UI design systems, macros, and theme math live in shilpo-rs/ui, not this repo. Pinned by
 # exact rev, never a branch, matching the gpui fork pin below -- bump the rev to pull in
 # changes.
-shilpo-m3e = { git = "https://github.com/shilpo-rs/ui", rev = "b7e1b2377764d934ad5a2baf4f8a0c6400ae00f7" }
+shilpo-m3e = { git = "https://github.com/shilpo-rs/ui", rev = "58acd8fc4c1320baea33acc436ba6532ef7e5554" }
 shilpo-ext-api = { path = "core/ext-api" }
 shilpo-registry-contract = { path = "core/registry-contract" }
 shilpo-domain = { path = "desktop/domain" }

@@ -6,10 +6,10 @@ use shilpo_m3e::{
     ActiveTheme, FocusTrapElement as _, Icon, IconName, StyledExt,
     button::{Button, ButtonVariants as _},
     h_flex,
-    input::{Input, InputState},
+    input::{SensitiveInput, SensitiveInputState},
     v_flex,
 };
-use shilpo_services::{PolkitPromptState, PolkitRequest};
+use shilpo_services::{PolkitCommand, PolkitPromptState, PolkitRequest, SecretString};
 
 use crate::runtime::ShellRuntime;
 
@@ -17,7 +17,7 @@ use crate::runtime::ShellRuntime;
 pub struct PolkitDialogView {
     pub(crate) request: PolkitRequest,
     pub(crate) prompt_state: Option<PolkitPromptState>,
-    pub(crate) input_state: Entity<InputState>,
+    pub(crate) input_state: Entity<SensitiveInputState>,
     pub(crate) focus_handle: FocusHandle,
 }
 
@@ -34,7 +34,7 @@ impl PolkitDialogView {
             .unwrap_or(false);
 
         let input_state = cx.new(|cx| {
-            let mut state = InputState::new(window, cx);
+            let mut state = SensitiveInputState::new(window, cx);
             if !is_visible {
                 state = state.masked(true);
             }
@@ -55,7 +55,7 @@ impl PolkitDialogView {
         &mut self,
         request: PolkitRequest,
         prompt_state: Option<PolkitPromptState>,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let is_visible = prompt_state
@@ -63,32 +63,35 @@ impl PolkitDialogView {
             .map(|p| p.response_visible)
             .unwrap_or(false);
 
-        self.input_state.update(cx, |this, cx| {
-            this.set_masked(!is_visible, window, cx);
-        });
+        if self.request.cookie != request.cookie {
+            self.clear_input(cx);
+        }
+        self.input_state
+            .update(cx, |this, cx| this.set_masked(!is_visible, cx));
 
         self.request = request;
         self.prompt_state = prompt_state;
         cx.notify();
     }
 
-    fn submit_response(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let text = self.input_state.read(cx).text().to_string();
+    fn submit_response(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let response = self.input_state.update(cx, |state, cx| state.take(cx));
+        let response = SecretString::from_utf8(response.into_bytes())
+            .expect("SensitiveInputState only stores valid UTF-8");
         let cookie = self.request.cookie.clone();
-
-        // Clear input state immediately
-        self.input_state.update(cx, |this, cx| {
-            this.set_value("", window, cx);
-        });
-
         let polkit = ShellRuntime::polkit(cx);
-        polkit.provide_response(&cookie, text);
+        let _ = polkit.submit_command(PolkitCommand::ProvideResponse { cookie, response });
     }
 
     fn cancel_dialog(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let cookie = self.request.cookie.clone();
+        self.clear_input(cx);
         let polkit = ShellRuntime::polkit(cx);
         polkit.cancel_request(&cookie);
+    }
+
+    pub(crate) fn clear_input(&mut self, cx: &mut Context<Self>) {
+        self.input_state.update(cx, |state, cx| state.clear(cx));
     }
 
     fn select_identity(&mut self, username: String, cx: &mut Context<Self>) {
@@ -292,7 +295,7 @@ impl Render for PolkitDialogView {
                                         .text_color(cx.theme().on_surface_variant)
                                         .child(input_prompt),
                                 )
-                                .child(Input::new(&self.input_state).cleanable(true)),
+                                .child(SensitiveInput::new(&self.input_state)),
                         )
                     })
                     // Footer Actions

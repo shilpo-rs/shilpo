@@ -1885,12 +1885,16 @@ impl ShellSurfaces {
             let view_cell = spawned_view.clone();
 
             let window_result = cx.open_window(options, move |window, cx| {
-                window.on_window_should_close(cx, |_, cx| {
-                    ShellSurfaces::forget_polkit(cx);
-                    true
-                });
                 let view = cx.new(|cx| {
                     crate::polkit::PolkitDialogView::new(req_clone, prompt_clone, window, cx)
+                });
+                let weak_view = view.downgrade();
+                window.on_window_should_close(cx, move |_, cx| {
+                    if let Some(view) = weak_view.upgrade() {
+                        view.update(cx, |view, cx| view.clear_input(cx));
+                    }
+                    ShellSurfaces::forget_polkit(cx);
+                    true
                 });
                 *view_cell.lock().unwrap() = Some(view.clone());
                 cx.new(|cx| shilpo_m3e::Root::new(view, window, cx).bordered(false))
@@ -1915,12 +1919,13 @@ impl ShellSurfaces {
             }
         } else {
             // Close polkit window if open
-            if let Some((_, window_handle, _)) = cx
+            if let Some((_, window_handle, view_handle)) = cx
                 .global_mut::<ShellRuntime>()
                 .shell_surfaces_mut()
                 .polkit
                 .take()
             {
+                view_handle.update(cx, |view, cx| view.clear_input(cx));
                 let _ = window_handle.update(cx, |_, window, _| window.remove_window());
                 cx.global_mut::<ShellRuntime>()
                     .shell_surfaces_mut()

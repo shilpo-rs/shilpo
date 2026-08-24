@@ -10,9 +10,10 @@ use gpui::{
 };
 use shilpo_m3e::{
     ActiveTheme, Icon, IconName, StyledExt,
-    input::{Input, InputState},
+    input::{SensitiveInput, SensitiveInputState},
     v_flex,
 };
+use shilpo_services::SecretString;
 use shilpo_services::auth::{AuthCommand, AuthOutcome, AuthPort, AuthService, AuthSnapshot};
 
 /// Entry point for the `shilpo lock` process role. Owns the session lock and the PAM
@@ -112,7 +113,7 @@ struct LockView {
     lock: Rc<dyn gpui::session_lock::PlatformSessionLock>,
     unlocked: Arc<std::sync::atomic::AtomicBool>,
     pam_service: String,
-    input_state: Entity<InputState>,
+    input_state: Entity<SensitiveInputState>,
     focus_handle: FocusHandle,
     status: Option<(String, bool)>,
     prompt_label: String,
@@ -134,7 +135,7 @@ impl LockView {
         cx: &mut Context<Self>,
     ) -> Self {
         let input_state = cx.new(|cx| {
-            InputState::new(window, cx)
+            SensitiveInputState::new(window, cx)
                 .masked(true)
                 .placeholder("Password:")
         });
@@ -208,14 +209,21 @@ impl LockView {
         }
     }
 
-    fn submit_response(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let text = self.input_state.read(cx).value().to_string();
-        if text.is_empty() {
+    fn submit_response(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.input_state.read(cx).is_empty() {
             return;
         }
-        self.auth.provide_response(text);
+        let response = self.input_state.update(cx, |state, cx| state.take(cx));
+        let response = SecretString::from_utf8(response.into_bytes())
+            .expect("SensitiveInputState only stores valid UTF-8");
+        let _ = self
+            .auth
+            .submit_command(AuthCommand::ProvideResponse { response });
+    }
+
+    fn clear_input(&mut self, cx: &mut Context<Self>) {
         self.input_state.update(cx, |state, cx| {
-            state.set_value("", window, cx);
+            state.clear(cx);
         });
     }
 
@@ -225,11 +233,9 @@ impl LockView {
         self._clear_timer = Some(window.spawn(cx, async move |cx| {
             cx.background_executor().timer(delay).await;
             let Some(this) = this.upgrade() else { return };
-            let _ = cx.update(|window, cx| {
+            let _ = cx.update(|_window, cx| {
                 this.update(cx, |view, cx| {
-                    view.input_state.update(cx, |state, cx| {
-                        state.set_value("", window, cx);
-                    });
+                    view.clear_input(cx);
                 });
             });
         }));
@@ -249,11 +255,11 @@ impl LockView {
                 self.prompt_label = label.clone();
                 let placeholder = self.prompt_label.clone();
                 self.input_state.update(cx, |state, cx| {
-                    state.set_placeholder(placeholder, window, cx);
+                    state.set_placeholder(placeholder, cx);
                 });
             }
             self.input_state.update(cx, |state, cx| {
-                state.set_masked(!prompt.response_visible, window, cx);
+                state.set_masked(!prompt.response_visible, cx);
             });
             if let Some(message) = &prompt.supplementary_message {
                 self.status = Some((message.clone(), prompt.supplementary_is_error));
@@ -262,6 +268,7 @@ impl LockView {
 
         match snapshot.last_outcome {
             Some(AuthOutcome::Succeeded) => {
+                self.clear_input(cx);
                 if !self
                     .unlocked
                     .swap(true, std::sync::atomic::Ordering::SeqCst)
@@ -272,9 +279,7 @@ impl LockView {
             }
             Some(AuthOutcome::Failed { ref message }) => {
                 self.status = Some((message.clone(), true));
-                self.input_state.update(cx, |state, cx| {
-                    state.set_value("", window, cx);
-                });
+                self.clear_input(cx);
                 // Retry automatically: a fresh PAM conversation for the next attempt.
                 let _ = self.auth.submit_command(AuthCommand::BeginAuthentication {
                     service: self.pam_service.clone(),
@@ -342,7 +347,7 @@ impl Render for LockView {
                             .child(Icon::new(IconName::Person).size(px(20.)))
                             .child(div().text_base().child(username)),
                     )
-                    .child(Input::new(&self.input_state).w_full())
+                    .child(SensitiveInput::new(&self.input_state).w_full())
                     .child(
                         div()
                             .flex()
