@@ -10,8 +10,8 @@ use std::time::Duration;
 use std::time::Instant;
 
 use shilpo_ext_api::{
-    Capability, ExtensionEvent as ApiEvent, ExtensionId, HostOperation, ViewTree as ApiViewTree,
-    wildcard_matches,
+    CanonicalVirtualPath, Capability, ExtensionEvent as ApiEvent, ExtensionId, HostOperation,
+    ViewTree as ApiViewTree, virtual_path_pattern_matches, wildcard_matches,
 };
 use wasmtime::component::{Component, Linker, ResourceTable, types::ComponentItem};
 use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder, Trap};
@@ -192,10 +192,12 @@ impl shilpo::extension::clipboard::Host for WasmState {
 impl shilpo::extension::filesystem::Host for WasmState {
     fn read_file(&mut self, path: String) -> Result<Vec<u8>, shilpo::extension::types::Error> {
         self.charge_hostcall_bytes(path.len())?;
+        let path = CanonicalVirtualPath::parse_guest(&path)
+            .map_err(|_| unauthorized_error("filesystem:read path is invalid"))?;
         let allowed = self.check_capability(|cap| match cap {
-            Capability::FilesystemRead { paths } => {
-                paths.iter().any(|pattern| wildcard_matches(pattern, &path))
-            }
+            Capability::FilesystemRead { paths } => paths
+                .iter()
+                .any(|pattern| virtual_path_pattern_matches(pattern, &path)),
             _ => false,
         });
         if !allowed {
@@ -203,7 +205,7 @@ impl shilpo::extension::filesystem::Host for WasmState {
         }
         Err(shilpo::extension::types::Error {
             kind: shilpo::extension::types::ErrorKind::NotFound,
-            message: format!("virtual file '{path}' not found"),
+            message: format!("virtual file '{}' not found", path.as_str()),
         })
     }
 
@@ -213,10 +215,12 @@ impl shilpo::extension::filesystem::Host for WasmState {
         contents: Vec<u8>,
     ) -> Result<(), shilpo::extension::types::Error> {
         self.charge_hostcall_bytes(path.len() + contents.len())?;
+        let path = CanonicalVirtualPath::parse_guest(&path)
+            .map_err(|_| unauthorized_error("filesystem:write path is invalid"))?;
         let allowed = self.check_capability(|cap| match cap {
-            Capability::FilesystemWrite { paths } => {
-                paths.iter().any(|pattern| wildcard_matches(pattern, &path))
-            }
+            Capability::FilesystemWrite { paths } => paths
+                .iter()
+                .any(|pattern| virtual_path_pattern_matches(pattern, &path)),
             _ => false,
         });
         if !allowed {

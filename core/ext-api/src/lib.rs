@@ -21,12 +21,12 @@ pub use events::{
 pub use id::{CanonicalId, ContributionId, ExtensionId, IdError};
 pub use manifest::{
     ActionContribution, BackgroundTaskContribution, BarMenuContribution, BarWidgetContribution,
-    Capability, CapabilityKind, Contributions, DesktopWidgetContribution, ExtensionManifest,
-    LibraryConfig, ManifestError, OFFICIAL_AUTHOR, SUPPORTED_API_VERSION, SUPPORTED_SCHEMA_VERSION,
-    SearchProviderContribution, SearchProviderMode, SecretPurpose, SecretRef,
-    SettingsPageContribution, SidePanelContribution, Subscription, WallpaperMode,
+    CanonicalVirtualPath, Capability, CapabilityKind, Contributions, DesktopWidgetContribution,
+    ExtensionManifest, LibraryConfig, ManifestError, OFFICIAL_AUTHOR, SUPPORTED_API_VERSION,
+    SUPPORTED_SCHEMA_VERSION, SearchProviderContribution, SearchProviderMode, SecretPurpose,
+    SecretRef, SettingsPageContribution, SidePanelContribution, Subscription, WallpaperMode,
     WallpaperProviderContribution, WallpaperTargetKind, valid_virtual_path_pattern,
-    validate_author, wildcard_matches,
+    validate_author, virtual_path_pattern_matches, wildcard_matches,
 };
 pub use view::{
     Alignment, BadgeNode, ButtonNode, ContainerDirection, ContainerNode, CornerRadii, EdgeInsets,
