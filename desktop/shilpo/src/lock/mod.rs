@@ -2,6 +2,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
+use chrono::Timelike;
 use gpui::{
     App, AppContext, Bounds, Context, Entity, FocusHandle, Focusable, InteractiveElement,
     IntoElement, KeyDownEvent, ParentElement, Render, Styled, Window, WindowBackgroundAppearance,
@@ -113,6 +114,7 @@ struct LockView {
     lock: Rc<dyn gpui::session_lock::PlatformSessionLock>,
     unlocked: Arc<std::sync::atomic::AtomicBool>,
     pam_service: String,
+    username: String,
     input_state: Entity<SensitiveInputState>,
     focus_handle: FocusHandle,
     status: Option<(String, bool)>,
@@ -121,6 +123,7 @@ struct LockView {
     _poll_task: gpui::Task<()>,
     _clear_timer: Option<gpui::Task<()>>,
     _refocus_task: gpui::Task<()>,
+    _clock_task: gpui::Task<()>,
 }
 
 impl LockView {
@@ -142,6 +145,7 @@ impl LockView {
 
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window, cx);
+        let username = whoami();
 
         let poll_task = {
             let auth = auth.clone();
@@ -193,11 +197,32 @@ impl LockView {
             })
         };
 
+        let clock_task = {
+            let this = cx.weak_entity();
+            window.spawn(cx, async move |cx| {
+                loop {
+                    let now = chrono::Local::now();
+                    cx.background_executor()
+                        .timer(duration_until_next_local_minute(
+                            now.second(),
+                            now.nanosecond(),
+                        ))
+                        .await;
+                    let Some(this) = this.upgrade() else { return };
+                    let result = cx.update(|_window, cx| this.update(cx, |_view, cx| cx.notify()));
+                    if result.is_err() {
+                        return;
+                    }
+                }
+            })
+        };
+
         Self {
             auth,
             lock,
             unlocked,
             pam_service,
+            username,
             input_state,
             focus_handle,
             status: None,
@@ -206,6 +231,7 @@ impl LockView {
             _poll_task: poll_task,
             _clear_timer: None,
             _refocus_task: refocus_task,
+            _clock_task: clock_task,
         }
     }
 
@@ -303,7 +329,7 @@ impl Render for LockView {
         let now = chrono::Local::now();
         let time_text = now.format("%H:%M").to_string();
         let date_text = now.format("%A, %B %-d").to_string();
-        let username = whoami();
+        let username = self.username.clone();
         let caps_lock_on = window.capslock().on;
         let keyboard_layout_name = cx.keyboard_layout().name().to_string();
 
@@ -382,6 +408,11 @@ impl Render for LockView {
     }
 }
 
+fn duration_until_next_local_minute(second: u32, nanosecond: u32) -> Duration {
+    let elapsed_ms = u64::from(second) * 1_000 + u64::from(nanosecond / 1_000_000);
+    Duration::from_millis(60_000_u64.saturating_sub(elapsed_ms).max(1))
+}
+
 fn whoami() -> String {
     let uid = unsafe { libc::getuid() };
     let mut buf = vec![0i8; 4096];
@@ -402,5 +433,27 @@ fn whoami() -> String {
             .into_owned()
     } else {
         "user".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::duration_until_next_local_minute;
+    use std::time::Duration;
+
+    #[test]
+    fn clock_refresh_targets_next_local_minute() {
+        assert_eq!(
+            duration_until_next_local_minute(0, 0),
+            Duration::from_secs(60)
+        );
+        assert_eq!(
+            duration_until_next_local_minute(30, 500_000_000),
+            Duration::from_millis(29_500)
+        );
+        assert_eq!(
+            duration_until_next_local_minute(59, 999_999_999),
+            Duration::from_millis(1)
+        );
     }
 }
