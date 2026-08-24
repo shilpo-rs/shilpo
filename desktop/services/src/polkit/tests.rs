@@ -5,9 +5,7 @@ use shilpo_domain::{CancellationReason, DomainLifecycle, SupervisorState, TimeSo
 use tokio::sync::oneshot;
 
 use super::agent::{AuthorityClient, authorize_polkit_caller_with};
-use super::helper::{
-    HelperEvent, MockPolkitHelper, probe_system_helper_path, zeroize_bytes, zeroize_string,
-};
+use super::helper::{HelperEvent, MockPolkitHelper, probe_system_helper_path};
 use super::state::{PolkitDomainState, SUCCESS_DISMISS_DELAY_MS};
 use super::types::{
     PolkitCommand, PolkitCommandOutcome, PolkitIdentity, PolkitRejectionReason, PolkitRequest,
