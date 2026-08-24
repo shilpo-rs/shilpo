@@ -413,28 +413,6 @@ fn duration_until_next_local_minute(second: u32, nanosecond: u32) -> Duration {
     Duration::from_millis(60_000_u64.saturating_sub(elapsed_ms).max(1))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::duration_until_next_local_minute;
-    use std::time::Duration;
-
-    #[test]
-    fn clock_refresh_targets_next_local_minute() {
-        assert_eq!(
-            duration_until_next_local_minute(0, 0),
-            Duration::from_secs(60)
-        );
-        assert_eq!(
-            duration_until_next_local_minute(30, 500_000_000),
-            Duration::from_millis(29_500)
-        );
-        assert_eq!(
-            duration_until_next_local_minute(59, 999_999_999),
-            Duration::from_millis(1)
-        );
-    }
-}
-
 fn whoami() -> String {
     let uid = unsafe { libc::getuid() };
     let mut buf = vec![0i8; 4096];
@@ -455,5 +433,27 @@ fn whoami() -> String {
             .into_owned()
     } else {
         "user".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::duration_until_next_local_minute;
+    use std::time::Duration;
+
+    #[test]
+    fn clock_refresh_targets_next_local_minute() {
+        assert_eq!(
+            duration_until_next_local_minute(0, 0),
+            Duration::from_secs(60)
+        );
+        assert_eq!(
+            duration_until_next_local_minute(30, 500_000_000),
+            Duration::from_millis(29_500)
+        );
+        assert_eq!(
+            duration_until_next_local_minute(59, 999_999_999),
+            Duration::from_millis(1)
+        );
     }
 }
