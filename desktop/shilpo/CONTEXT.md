@@ -11,4 +11,18 @@ Consolidated desktop product package. Produces the single installed executable b
 - `cli`: Command-line interface dispatcher for subcommands (`shilpo daemon`, `shilpo settings`, `shilpo config`,
   `shilpo theme`, `shilpo doctor`, `shilpo ext`, etc.).
 - `config`: TOML configuration loading, schema validation, default resolution, per-output overrides.
+- `locale`: First-party application locale resolution, translation, and live refresh.
 
+## Language
+
+**Application Locale**:
+The supported BCP 47 language and regional convention selected for Shilpo-owned text in one process.
+_Avoid_: System locale, UI locale
+
+**Locale Intent**:
+The configured or process-environment locale requested before support and fallback rules are applied.
+_Avoid_: Selected locale, active locale
+
+**Resolved Locale**:
+The supported Application Locale produced from Locale Intent by exact, language, and default fallback.
+_Avoid_: Raw locale, configured locale

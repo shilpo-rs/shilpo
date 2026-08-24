@@ -42,6 +42,7 @@
 pub mod assets;
 pub mod cli;
 pub mod config;
+pub mod locale;
 pub mod lock;
 pub mod settings;
 pub mod setup;

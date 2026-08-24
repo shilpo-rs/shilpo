@@ -828,6 +828,12 @@ impl ShellRuntime {
             match config_upd {
                 crate::shell::bar::service_worker::ConfigUpdate::Loaded { config, changeset } => {
                     Self::emit_config_signal(cx, true, changeset.clone(), 0);
+                    if changeset.locale {
+                        crate::locale::ApplicationLocale::apply_config(
+                            config.locale.as_deref(),
+                            cx,
+                        );
+                    }
                     Self::set_active_config(cx, &config);
                     if changeset.outputs || changeset.desktop {
                         ShellSurfaces::request(cx, SurfaceRequest::SyncDisplays);

@@ -260,9 +260,29 @@ pub fn spawn(
 ) -> gpui::Task<()> {
     let reconnect_client = client.clone();
     tokio::spawn(async move { reconnect_client.maintain_connection().await });
-    executor
+    executor.clone().spawn(async move {
+        run(
+            executor.clone(),
+            updates,
+            commands,
+            config_path,
+            Some(client),
+        )
+        .await
+    })
+}
+
+/// Spawns only the shared transactional config publication loop.
+pub fn spawn_config_updates(
+    executor: BackgroundExecutor,
+    config_path: PathBuf,
+) -> (ConfigReceiver, gpui::Task<()>) {
+    let (updates, receiver) = tokio::sync::mpsc::channel(64);
+    let (_command_sender, commands) = tokio::sync::mpsc::channel(1);
+    let task = executor
         .clone()
-        .spawn(async move { run(executor.clone(), updates, commands, config_path, client).await })
+        .spawn(async move { run(executor.clone(), updates, commands, config_path, None).await });
+    (receiver, task)
 }
 
 async fn run(
@@ -270,7 +290,7 @@ async fn run(
     updates: ConfigSender,
     mut commands: CommandReceiver,
     config_path: PathBuf,
-    client: DeviceClient,
+    client: Option<DeviceClient>,
 ) {
     let resolver = crate::config::ConfigResolver::from_primary_path(&config_path);
     let mut committed_snapshot = match resolver.resolve_initial() {
@@ -353,12 +373,13 @@ async fn run(
                     debounce.on_reload_complete(Instant::now());
                 }
                 WorkerCommand::Device(command) => {
-                    let client = client.clone();
-                    tokio::spawn(async move {
-                        if let Err(reason) = client.send_command(command).await {
-                            tracing::warn!(%reason, "device command rejected");
-                        }
-                    });
+                    if let Some(client) = client.clone() {
+                        tokio::spawn(async move {
+                            if let Err(reason) = client.send_command(command).await {
+                                tracing::warn!(%reason, "device command rejected");
+                            }
+                        });
+                    }
                 }
             }
         }
