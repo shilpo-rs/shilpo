@@ -340,6 +340,80 @@ pub fn wildcard_matches(pattern: &str, value: &str) -> bool {
     pattern_index == pattern.len()
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CanonicalVirtualPath(String);
+
+impl CanonicalVirtualPath {
+    pub fn parse_guest(value: &str) -> Result<Self, ManifestError> {
+        parse_virtual_path(value, false)
+    }
+
+    fn parse_scope(value: &str) -> Result<Self, ManifestError> {
+        parse_virtual_path(value, true)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+fn parse_virtual_path(
+    value: &str,
+    allow_wildcards: bool,
+) -> Result<CanonicalVirtualPath, ManifestError> {
+    if value.is_empty() || value.starts_with('/') || value.ends_with('/') || value.contains("//") {
+        return Err(ManifestError::Validation(
+            "virtual path must be relative and contain no empty components".into(),
+        ));
+    }
+    let mut segments = Vec::new();
+    for (index, segment) in value.split('/').enumerate() {
+        if segment.is_empty() || segment == "." || segment == ".." {
+            return Err(ManifestError::Validation(
+                "virtual path contains an invalid component".into(),
+            ));
+        }
+        if !allow_wildcards && segment.contains('*') {
+            return Err(ManifestError::Validation(
+                "guest virtual paths cannot contain wildcards".into(),
+            ));
+        }
+        if segment.contains("**") {
+            return Err(ManifestError::Validation(
+                "recursive wildcards are not supported".into(),
+            ));
+        }
+        if segment
+            .chars()
+            .any(|character| matches!(character, '?' | '[' | ']' | '\\'))
+        {
+            return Err(ManifestError::Validation(
+                "virtual path contains unsupported glob syntax".into(),
+            ));
+        }
+        if index == 0 && !matches!(segment, "assets" | "data" | "user") {
+            return Err(ManifestError::Validation(
+                "virtual path must begin with assets, data, or user".into(),
+            ));
+        }
+        segments.push(segment);
+    }
+    Ok(CanonicalVirtualPath(segments.join("/")))
+}
+
+pub fn virtual_path_pattern_matches(pattern: &str, path: &CanonicalVirtualPath) -> bool {
+    let Ok(pattern) = CanonicalVirtualPath::parse_scope(pattern) else {
+        return false;
+    };
+    let pattern_segments = pattern.0.split('/').collect::<Vec<_>>();
+    let path_segments = path.0.split('/').collect::<Vec<_>>();
+    pattern_segments.len() == path_segments.len()
+        && pattern_segments
+            .iter()
+            .zip(path_segments)
+            .all(|(pattern, value)| wildcard_matches(pattern, value))
+}
+
 impl Contributions {
     fn entries(&self) -> impl Iterator<Item = (&ContributionId, &str)> {
         self.bar_widgets
@@ -820,17 +894,7 @@ fn validate_capabilities(capabilities: &[Capability]) -> Result<(), ManifestErro
 }
 
 pub fn valid_virtual_path_pattern(value: &str) -> bool {
-    let path = Path::new(value);
-    !value.trim().is_empty()
-        && !path.is_absolute()
-        && matches!(
-            path.components().next(),
-            Some(Component::Normal(root))
-                if root == "assets" || root == "data" || root == "user"
-        )
-        && path
-            .components()
-            .all(|component| matches!(component, Component::Normal(_)))
+    CanonicalVirtualPath::parse_scope(value).is_ok()
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
@@ -1409,5 +1473,34 @@ mod tests {
                 "expected Validation error for author '{author}', got {err:?}"
             );
         }
+    }
+
+    #[test]
+    fn canonical_virtual_paths_reject_traversal_and_cross_root_inputs() {
+        for value in [
+            "/user/file",
+            "user/",
+            "user//file",
+            "user/./file",
+            "user/../secrets",
+            "tmp/file",
+            "user/*/file",
+        ] {
+            assert!(
+                CanonicalVirtualPath::parse_guest(value).is_err(),
+                "guest path should be rejected: {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn virtual_path_scopes_match_segments_without_crossing_roots() {
+        let path = CanonicalVirtualPath::parse_guest("user/notes/today.txt").unwrap();
+        assert!(virtual_path_pattern_matches("user/notes/*", &path));
+        assert!(!virtual_path_pattern_matches("user/*", &path));
+        assert!(!virtual_path_pattern_matches("assets/*", &path));
+        assert!(!virtual_path_pattern_matches("user/../*", &path));
+        assert!(valid_virtual_path_pattern("assets/icons/*.svg"));
+        assert!(!valid_virtual_path_pattern("assets/**/icons"));
     }
 }
