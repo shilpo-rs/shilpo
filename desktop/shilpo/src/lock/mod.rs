@@ -1,12 +1,14 @@
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Result;
 use gpui::{
-    App, AppContext, Bounds, Context, Entity, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, KeyDownEvent, ParentElement, Render, Styled, Window, WindowBackgroundAppearance,
-    WindowBounds, WindowKind, WindowOptions, div, point, prelude::FluentBuilder as _, px,
-    session_lock::SessionLockOptions,
+    App, AppContext, Bounds, Context, DisplayId, Entity, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render, Styled, Window,
+    WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div, point,
+    prelude::FluentBuilder as _, px, session_lock::SessionLockOptions,
 };
 use shilpo_m3e::{
     ActiveTheme, Icon, IconName, StyledExt,
@@ -54,40 +56,82 @@ pub async fn run_lock() {
 
         let unlocked = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-        for display in &displays {
-            let bounds = display.bounds();
-            let auth = auth.clone();
-            let lock = lock.clone();
-            let unlocked = unlocked.clone();
-            let pam_service = pam_service.clone();
-
-            let _ = cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(Bounds {
-                        origin: point(px(0.), px(0.)),
-                        size: bounds.size,
-                    })),
-                    app_id: Some("org.shilpo.lock".into()),
-                    window_background: WindowBackgroundAppearance::Opaque,
-                    display_id: Some(display.id()),
-                    kind: WindowKind::SessionLock(SessionLockOptions { lock: lock.clone() }),
-                    ..Default::default()
-                },
-                move |window, cx| {
-                    cx.new(|cx| {
-                        LockView::new(
-                            auth,
-                            lock,
-                            unlocked,
-                            pam_service,
-                            clear_input_after_ms,
-                            window,
-                            cx,
-                        )
-                    })
-                },
-            );
+        let mut windows = HashMap::new();
+        for display in displays {
+            let display_id = display.id();
+            match open_lock_window(
+                cx,
+                display,
+                auth.clone(),
+                lock.clone(),
+                unlocked.clone(),
+                pam_service.clone(),
+                clear_input_after_ms,
+            ) {
+                Ok(window) => {
+                    windows.insert(display_id, window);
+                }
+                Err(error) => {
+                    tracing::error!(%error, "failed to open initial lock surface");
+                    cx.quit();
+                    return;
+                }
+            }
         }
+
+        // GPUI's pinned fork exposes the current display list but no display-change observer.
+        // Reconcile on the foreground executor so the session-lock process covers outputs that
+        // appear after acquisition without moving the non-Send platform lock across threads.
+        let display_lock = lock.clone();
+        let display_task = cx.spawn(async move |cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(250))
+                    .await;
+                let result = cx.update(|cx| {
+                    let current = cx.displays();
+                    let current_ids: Vec<_> = current.iter().map(|display| display.id()).collect();
+                    let (added, removed) = reconcile_display_ids(windows.keys().copied(), current_ids);
+
+                    for display_id in removed {
+                        if let Some(window) = windows.remove(&display_id) {
+                            let _ = window.update(cx, |_, window, _| window.remove_window());
+                            tracing::debug!(?display_id, "removed lock surface for disconnected output");
+                        }
+                    }
+
+                    for display in current {
+                        let display_id = display.id();
+                        if !added.contains(&display_id) {
+                            continue;
+                        }
+                        match open_lock_window(
+                            cx,
+                            display,
+                            auth.clone(),
+                            display_lock.clone(),
+                            unlocked.clone(),
+                            pam_service.clone(),
+                            clear_input_after_ms,
+                        ) {
+                            Ok(window) => {
+                                windows.insert(display_id, window);
+                            }
+                            Err(error) => {
+                                tracing::error!(%error, ?display_id, "failed to open lock surface for newly connected output");
+                                cx.quit();
+                                return false;
+                            }
+                        }
+                    }
+                    true
+                });
+                if !result {
+                    return;
+                }
+            }
+        });
+        display_task.detach();
 
         lock.on_locked(Box::new(|| {
             tracing::info!("session locked: every output's surface is committed");
@@ -105,6 +149,63 @@ pub async fn run_lock() {
             std::process::exit(1);
         }));
     });
+}
+
+fn open_lock_window(
+    cx: &mut App,
+    display: Rc<dyn gpui::PlatformDisplay>,
+    auth: Arc<dyn AuthPort>,
+    lock: Rc<dyn gpui::session_lock::PlatformSessionLock>,
+    unlocked: Arc<std::sync::atomic::AtomicBool>,
+    pam_service: String,
+    clear_input_after_ms: u64,
+) -> Result<WindowHandle<LockView>> {
+    let display_id = display.id();
+    let bounds = display.bounds();
+    let window_lock = lock.clone();
+    cx.open_window(
+        WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds {
+                origin: point(px(0.), px(0.)),
+                size: bounds.size,
+            })),
+            app_id: Some("org.shilpo.lock".into()),
+            window_background: WindowBackgroundAppearance::Opaque,
+            display_id: Some(display_id),
+            kind: WindowKind::SessionLock(SessionLockOptions { lock: window_lock }),
+            ..Default::default()
+        },
+        move |window, cx| {
+            cx.new(|cx| {
+                LockView::new(
+                    auth,
+                    lock,
+                    unlocked,
+                    pam_service,
+                    clear_input_after_ms,
+                    window,
+                    cx,
+                )
+            })
+        },
+    )
+}
+
+fn reconcile_display_ids(
+    existing: impl IntoIterator<Item = DisplayId>,
+    current: impl IntoIterator<Item = DisplayId>,
+) -> (Vec<DisplayId>, Vec<DisplayId>) {
+    let existing = existing
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
+    let current = current
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
+    let mut added = current.difference(&existing).copied().collect::<Vec<_>>();
+    let mut removed = existing.difference(&current).copied().collect::<Vec<_>>();
+    added.sort_by_key(|id| u64::from(*id));
+    removed.sort_by_key(|id| u64::from(*id));
+    (added, removed)
 }
 
 struct LockView {
@@ -397,5 +498,31 @@ fn whoami() -> String {
             .into_owned()
     } else {
         "user".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reconcile_display_ids;
+    use gpui::DisplayId;
+
+    #[test]
+    fn display_reconciliation_reports_additions_and_removals() {
+        let (added, removed) = reconcile_display_ids(
+            [DisplayId::from(2), DisplayId::from(7)],
+            [DisplayId::from(1), DisplayId::from(2)],
+        );
+
+        assert_eq!(added, [DisplayId::from(1)]);
+        assert_eq!(removed, [DisplayId::from(7)]);
+    }
+
+    #[test]
+    fn display_reconciliation_is_idempotent_for_unchanged_outputs() {
+        let ids = [DisplayId::from(1), DisplayId::from(2)];
+        let (added, removed) = reconcile_display_ids(ids, ids);
+
+        assert!(added.is_empty());
+        assert!(removed.is_empty());
     }
 }
