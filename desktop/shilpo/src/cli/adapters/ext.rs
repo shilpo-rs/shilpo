@@ -1555,9 +1555,10 @@ impl ExtAdapter {
         } else {
             shilpo_ext_runtime::StatePolicy::Retain
         };
-        let broker = shilpo_ext_runtime::Oo7SecretBroker::new().ok().map(|b| {
-            std::sync::Arc::new(b) as std::sync::Arc<dyn shilpo_ext_runtime::SecretBroker>
-        });
+        let broker = Some(
+            std::sync::Arc::new(shilpo_ext_runtime::Oo7SecretBroker::new())
+                as std::sync::Arc<dyn shilpo_ext_runtime::SecretBroker>,
+        );
         let store = if state_policy == shilpo_ext_runtime::StatePolicy::Delete {
             match shilpo_ext_runtime::HeedStateStore::open(&self.catalog.paths().state_store_dir())
             {

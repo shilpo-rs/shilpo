@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::RwLock;
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::Instant;
 
 use shilpo_ext_api::{ExtensionId, SecretPurpose, SecretRef};
@@ -178,15 +178,115 @@ fn validate_reference(reference: &SecretRef) -> Result<(), SecretBrokerError> {
 
 /// Production secret broker backed by Freedesktop Secret Service via `oo7`.
 pub struct Oo7SecretBroker {
-    // Secret Service client instance
+    backend: SharedSecretBackend,
 }
 
 impl Oo7SecretBroker {
-    pub fn new() -> Result<Self, SecretBrokerError> {
-        smol::block_on(async { oo7::Keyring::new().await })
-            .map(|_| Self {})
-            .map_err(map_oo7_error)
+    /// Constructs a broker without contacting Secret Service.
+    pub fn new() -> Self {
+        Self::from_initializer(Arc::new(|deadline| {
+            let keyring = block_on_oo7(
+                async { oo7::Keyring::new().await.map_err(map_oo7_error) },
+                deadline,
+            )?;
+            Ok(Arc::new(Oo7ConnectedBroker { keyring }))
+        }))
     }
+
+    fn from_initializer(initializer: BackendInitializer) -> Self {
+        Self {
+            backend: SharedSecretBackend {
+                state: Mutex::new(BackendState::Uninitialized),
+                state_changed: Condvar::new(),
+                initializer,
+            },
+        }
+    }
+
+    #[cfg(test)]
+    fn with_initializer<F>(initializer: F) -> Self
+    where
+        F: Fn(Instant) -> Result<Arc<dyn SecretBroker>, SecretBrokerError> + Send + Sync + 'static,
+    {
+        Self::from_initializer(Arc::new(initializer))
+    }
+}
+
+impl Default for Oo7SecretBroker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+type BackendInitializer =
+    Arc<dyn Fn(Instant) -> Result<Arc<dyn SecretBroker>, SecretBrokerError> + Send + Sync>;
+
+enum BackendState {
+    Uninitialized,
+    Initializing,
+    Ready(Arc<dyn SecretBroker>),
+    Failed(SecretBrokerError),
+}
+
+struct SharedSecretBackend {
+    state: Mutex<BackendState>,
+    state_changed: Condvar,
+    initializer: BackendInitializer,
+}
+
+impl SharedSecretBackend {
+    fn get(&self, deadline: Instant) -> Result<Arc<dyn SecretBroker>, SecretBrokerError> {
+        ensure_deadline(deadline)?;
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        loop {
+            match &*state {
+                BackendState::Ready(backend) => return Ok(backend.clone()),
+                BackendState::Failed(error) => return Err(error.clone()),
+                BackendState::Uninitialized => {
+                    *state = BackendState::Initializing;
+                    drop(state);
+                    let initialized = (self.initializer)(deadline);
+                    state = self
+                        .state
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    match initialized {
+                        Ok(backend) => {
+                            *state = BackendState::Ready(backend.clone());
+                            self.state_changed.notify_all();
+                            return Ok(backend);
+                        }
+                        Err(error) => {
+                            *state = BackendState::Failed(error.clone());
+                            self.state_changed.notify_all();
+                            return Err(error);
+                        }
+                    }
+                }
+                BackendState::Initializing => {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    if remaining.is_zero() {
+                        return Err(deadline_expired());
+                    }
+                    let (next_state, timeout) = self
+                        .state_changed
+                        .wait_timeout(state, remaining)
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    state = next_state;
+                    if timeout.timed_out() {
+                        return Err(deadline_expired());
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct Oo7ConnectedBroker {
+    keyring: oo7::Keyring,
 }
 
 fn map_oo7_error(error: oo7::Error) -> SecretBrokerError {
@@ -221,12 +321,14 @@ fn map_oo7_error(error: oo7::Error) -> SecretBrokerError {
 
 fn ensure_deadline(deadline: Instant) -> Result<(), SecretBrokerError> {
     if Instant::now() >= deadline {
-        Err(SecretBrokerError::Cancelled(
-            "secret operation deadline expired".into(),
-        ))
+        Err(deadline_expired())
     } else {
         Ok(())
     }
+}
+
+fn deadline_expired() -> SecretBrokerError {
+    SecretBrokerError::Cancelled("secret operation deadline expired".into())
 }
 
 fn block_on_oo7<F, T>(future: F, deadline: Instant) -> Result<T, SecretBrokerError>
@@ -235,16 +337,12 @@ where
 {
     let remaining = deadline.saturating_duration_since(Instant::now());
     if remaining.is_zero() {
-        return Err(SecretBrokerError::Cancelled(
-            "secret operation deadline expired".into(),
-        ));
+        return Err(deadline_expired());
     }
     smol::block_on(async move {
         futures_lite::future::race(future, async move {
             smol::Timer::after(remaining).await;
-            Err(SecretBrokerError::Cancelled(
-                "secret operation deadline expired".into(),
-            ))
+            Err(deadline_expired())
         })
         .await
     })
@@ -258,20 +356,73 @@ impl SecretBroker for Oo7SecretBroker {
         value: &[u8],
         deadline: Instant,
     ) -> Result<SecretRef, SecretBrokerError> {
+        ensure_deadline(deadline)?;
+        self.backend
+            .get(deadline)?
+            .set(extension_id, purpose, value, deadline)
+    }
+
+    fn read(
+        &self,
+        extension_id: &ExtensionId,
+        purpose: &SecretPurpose,
+        reference: &SecretRef,
+        deadline: Instant,
+    ) -> Result<Option<Vec<u8>>, SecretBrokerError> {
+        ensure_deadline(deadline)?;
+        validate_reference(reference)?;
+        self.backend
+            .get(deadline)?
+            .read(extension_id, purpose, reference, deadline)
+    }
+
+    fn delete(
+        &self,
+        extension_id: &ExtensionId,
+        purpose: &SecretPurpose,
+        reference: &SecretRef,
+        deadline: Instant,
+    ) -> Result<(), SecretBrokerError> {
+        ensure_deadline(deadline)?;
+        validate_reference(reference)?;
+        self.backend
+            .get(deadline)?
+            .delete(extension_id, purpose, reference, deadline)
+    }
+
+    fn delete_all(
+        &self,
+        extension_id: &ExtensionId,
+        deadline: Instant,
+    ) -> Result<(), SecretBrokerError> {
+        ensure_deadline(deadline)?;
+        self.backend
+            .get(deadline)?
+            .delete_all(extension_id, deadline)
+    }
+}
+
+impl SecretBroker for Oo7ConnectedBroker {
+    fn set(
+        &self,
+        extension_id: &ExtensionId,
+        purpose: &SecretPurpose,
+        value: &[u8],
+        deadline: Instant,
+    ) -> Result<SecretRef, SecretBrokerError> {
         let handle = format!("secret-{}", uuid::Uuid::new_v4());
         let label = format!("shilpo:secret:{extension_id}:{purpose}");
 
         let result = block_on_oo7(
             async {
-                let keyring = oo7::Keyring::new().await.map_err(map_oo7_error)?;
-
                 let mut attributes = HashMap::new();
                 attributes.insert("shilpo:app", "shilpo");
                 attributes.insert("shilpo:extension_id", extension_id.as_str());
                 attributes.insert("shilpo:purpose", purpose.as_str());
                 attributes.insert("shilpo:handle", handle.as_str());
 
-                let previous = keyring
+                let previous = self
+                    .keyring
                     .search_items(&[
                         ("shilpo:app", "shilpo"),
                         ("shilpo:extension_id", extension_id.as_str()),
@@ -280,7 +431,7 @@ impl SecretBroker for Oo7SecretBroker {
                     .await
                     .map_err(map_oo7_error)?;
 
-                keyring
+                self.keyring
                     .create_item(&label, &attributes, value, true)
                     .await
                     .map_err(map_oo7_error)?;
@@ -309,8 +460,8 @@ impl SecretBroker for Oo7SecretBroker {
         validate_reference(reference)?;
         block_on_oo7(
             async {
-                let keyring = oo7::Keyring::new().await.map_err(map_oo7_error)?;
-                let items = keyring
+                let items = self
+                    .keyring
                     .search_items(&[
                         ("shilpo:app", "shilpo"),
                         ("shilpo:extension_id", extension_id.as_str()),
@@ -342,8 +493,8 @@ impl SecretBroker for Oo7SecretBroker {
         validate_reference(reference)?;
         block_on_oo7(
             async {
-                let keyring = oo7::Keyring::new().await.map_err(map_oo7_error)?;
-                let items = keyring
+                let items = self
+                    .keyring
                     .search_items(&[
                         ("shilpo:app", "shilpo"),
                         ("shilpo:extension_id", extension_id.as_str()),
@@ -369,8 +520,8 @@ impl SecretBroker for Oo7SecretBroker {
     ) -> Result<(), SecretBrokerError> {
         block_on_oo7(
             async {
-                let keyring = oo7::Keyring::new().await.map_err(map_oo7_error)?;
-                let items = keyring
+                let items = self
+                    .keyring
                     .search_items(&[
                         ("shilpo:app", "shilpo"),
                         ("shilpo:extension_id", extension_id.as_str()),
@@ -390,6 +541,11 @@ impl SecretBroker for Oo7SecretBroker {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{
+        Arc, Barrier,
+        atomic::{AtomicUsize, Ordering},
+    };
+
     use super::*;
 
     fn deadline() -> Instant {
@@ -552,26 +708,71 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_first_operations_share_one_backend_initialization_attempt() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_for_init = attempts.clone();
+        let broker = Arc::new(Oo7SecretBroker::with_initializer(move |_| {
+            attempts_for_init.fetch_add(1, Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            Err(SecretBrokerError::BackendUnavailable(
+                "Secret Service connection failed".into(),
+            ))
+        }));
+        let barrier = Arc::new(Barrier::new(8));
+
+        let callers = (0..8)
+            .map(|_| {
+                let broker = broker.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    broker.delete_all(
+                        &ExtensionId::new("io.github.test.concurrent").unwrap(),
+                        deadline(),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for caller in callers {
+            assert_eq!(
+                caller.join().unwrap(),
+                Err(SecretBrokerError::BackendUnavailable(
+                    "Secret Service connection failed".into()
+                ))
+            );
+        }
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn lazily_initialized_backend_preserves_secret_contract() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_for_init = attempts.clone();
+        let broker = Oo7SecretBroker::with_initializer(move |_| {
+            attempts_for_init.fetch_add(1, Ordering::SeqCst);
+            Ok(Arc::new(FakeSecretBroker::new()))
+        });
+
+        assert_secret_broker_contract(&broker);
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
     fn real_oo7_secret_broker_contract_or_skipped() {
-        match Oo7SecretBroker::new() {
-            Ok(broker) => {
-                let ext = ExtensionId::new("io.github.test.oo7check").unwrap();
-                let purpose = SecretPurpose::parse("check").unwrap();
-                match broker.set(&ext, &purpose, b"test-probe", deadline()) {
-                    Ok(reference) => {
-                        let _ = broker.delete(&ext, &purpose, &reference, deadline());
-                        let _ = broker.delete_all(&ext, deadline());
-                        assert_secret_broker_contract(&broker);
-                    }
-                    Err(SecretBrokerError::BackendUnavailable(msg)) => {
-                        println!(
-                            "SKIPPED real-keyring integration test: Secret Service unavailable on DBus ({msg})"
-                        );
-                    }
-                    Err(err) => {
-                        println!("SKIPPED real-keyring integration test: {err}");
-                    }
-                }
+        let broker = Oo7SecretBroker::new();
+        let ext = ExtensionId::new("io.github.test.oo7check").unwrap();
+        let purpose = SecretPurpose::parse("check").unwrap();
+        match broker.set(&ext, &purpose, b"test-probe", deadline()) {
+            Ok(reference) => {
+                let _ = broker.delete(&ext, &purpose, &reference, deadline());
+                let _ = broker.delete_all(&ext, deadline());
+                assert_secret_broker_contract(&broker);
+            }
+            Err(SecretBrokerError::BackendUnavailable(msg)) => {
+                println!(
+                    "SKIPPED real-keyring integration test: Secret Service unavailable on DBus ({msg})"
+                );
             }
             Err(err) => {
                 println!("SKIPPED real-keyring integration test: {err}");
