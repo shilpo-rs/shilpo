@@ -8,6 +8,7 @@ use shilpo_services::ClipboardItem;
 use tokio::sync::watch;
 
 use super::{
+    activation_cache::ActivationCache,
     parser::SearchMode,
     sink::SearchSink,
     types::{
@@ -20,7 +21,7 @@ use super::{
 #[derive(Clone)]
 pub struct ClipboardSearchProvider {
     subscription: Option<watch::Receiver<Vec<ClipboardItem>>>,
-    cached_items: Arc<Mutex<HashMap<String, ClipboardItem>>>,
+    cached_items: Arc<Mutex<ActivationCache<ClipboardItem>>>,
 }
 
 impl ClipboardSearchProvider {
@@ -28,7 +29,7 @@ impl ClipboardSearchProvider {
     pub fn new(subscription: Option<watch::Receiver<Vec<ClipboardItem>>>) -> Self {
         Self {
             subscription,
-            cached_items: Arc::new(Mutex::new(HashMap::new())),
+            cached_items: Arc::new(Mutex::new(ActivationCache::default())),
         }
     }
 }
@@ -52,7 +53,7 @@ impl SearchProvider for ClipboardSearchProvider {
     fn search(&self, request: SearchRequest, sink: SearchSink) {
         let query_generation = request.generation;
         let provider_id = self.id();
-        let mut cached = self.cached_items.lock().unwrap();
+        let mut next_cache = HashMap::new();
 
         // Fresh read from the watch channel subscription on every search() invocation
         let items = self
@@ -63,8 +64,8 @@ impl SearchProvider for ClipboardSearchProvider {
 
         for item in items {
             let canonical_id = format!("clipboard:{}", item.id);
-            let act_key = format!("clipboard:{query_generation}:{canonical_id}");
-            cached.insert(act_key.clone(), item.clone());
+            let act_key = canonical_id.clone();
+            next_cache.insert(act_key.clone(), item.clone());
 
             let (title, subtitle) = match &item.content {
                 shilpo_services::ClipboardContent::Text(text) => (
@@ -128,6 +129,11 @@ impl SearchProvider for ClipboardSearchProvider {
 
             sink.push(candidate);
         }
+
+        self.cached_items
+            .lock()
+            .unwrap()
+            .replace(query_generation, next_cache);
     }
 
     fn activate(&self, activation: SearchActivation) -> Result<ActionResult, SearchError> {
@@ -135,8 +141,7 @@ impl SearchProvider for ClipboardSearchProvider {
             .cached_items
             .lock()
             .unwrap()
-            .get(&activation.payload)
-            .cloned()
+            .get_cloned(&activation.payload)
             .ok_or_else(|| SearchError::NotFound(activation.payload.clone()))?;
 
         Ok(ActionResult::CopyClipboard(item))
@@ -249,5 +254,42 @@ mod tests {
             sink1.snapshot()[0].canonical_id,
             sink2.snapshot()[0].canonical_id
         );
+    }
+
+    #[test]
+    fn test_clipboard_activation_cache_replaces_sensitive_previous_generation() {
+        let sensitive = sample_item("secret-password", 1);
+        let retained = sample_item("safe-value", 2);
+        let (tx, rx) = watch::channel(vec![sensitive, retained.clone()]);
+        let provider = ClipboardSearchProvider::new(Some(rx));
+
+        let first_sink = SearchSink::new(1, SinkConfig::default());
+        provider.search(
+            SearchRequest::new(";", SearchMode::Clipboard, "", 1),
+            first_sink.clone(),
+        );
+        let stale_activation = first_sink
+            .snapshot()
+            .into_iter()
+            .find(|candidate| candidate.title == "secret-password")
+            .unwrap()
+            .activation;
+
+        tx.send(vec![retained]).unwrap();
+        let second_sink = SearchSink::new(2, SinkConfig::default());
+        provider.search(
+            SearchRequest::new(";safe", SearchMode::Clipboard, "safe", 2),
+            second_sink.clone(),
+        );
+
+        assert_eq!(provider.cached_items.lock().unwrap().len(), 1);
+        assert!(matches!(
+            provider.activate(stale_activation),
+            Err(SearchError::NotFound(_))
+        ));
+        assert!(matches!(
+            provider.activate(second_sink.snapshot()[0].activation.clone()),
+            Ok(ActionResult::CopyClipboard(_))
+        ));
     }
 }

@@ -7,6 +7,7 @@ use std::{
 use shilpo_m3e::IconName;
 
 use super::{
+    activation_cache::ActivationCache,
     parser::SearchMode,
     ranking,
     sink::SearchSink,
@@ -29,7 +30,7 @@ enum QuicklinkTarget {
 #[derive(Clone)]
 pub struct QuicklinksSearchProvider {
     keybindings: Vec<(String, String)>,
-    cached_targets: Arc<Mutex<HashMap<String, QuicklinkTarget>>>,
+    cached_targets: Arc<Mutex<ActivationCache<QuicklinkTarget>>>,
 }
 
 impl QuicklinksSearchProvider {
@@ -37,7 +38,7 @@ impl QuicklinksSearchProvider {
     pub fn new(keybindings: Vec<(String, String)>) -> Self {
         Self {
             keybindings,
-            cached_targets: Arc::new(Mutex::new(HashMap::new())),
+            cached_targets: Arc::new(Mutex::new(ActivationCache::default())),
         }
     }
 }
@@ -68,7 +69,7 @@ impl SearchProvider for QuicklinksSearchProvider {
     fn search(&self, request: SearchRequest, sink: SearchSink) {
         let query_generation = request.generation;
         let provider_id = self.id();
-        let mut targets = self.cached_targets.lock().unwrap();
+        let mut next_cache = HashMap::new();
 
         match request.mode {
             SearchMode::Default => {
@@ -77,8 +78,8 @@ impl SearchProvider for QuicklinksSearchProvider {
                 // check to avoid offering invalid filesystem paths as candidates.
                 if let Some(path) = ranking::expand_path(&request.raw_query) {
                     let canonical_id = format!("path:{}", path.display());
-                    let act_key = format!("quicklink:{query_generation}:{canonical_id}");
-                    targets.insert(act_key.clone(), QuicklinkTarget::OpenPath(path.clone()));
+                    let act_key = canonical_id.clone();
+                    next_cache.insert(act_key.clone(), QuicklinkTarget::OpenPath(path.clone()));
 
                     sink.push(SearchCandidate {
                         provider_id: provider_id.clone(),
@@ -103,8 +104,8 @@ impl SearchProvider for QuicklinksSearchProvider {
                 } else if ranking::is_uri_spec(&request.raw_query) {
                     let uri = request.raw_query.trim().to_string();
                     let canonical_id = format!("uri:{}", uri);
-                    let act_key = format!("quicklink:{query_generation}:{canonical_id}");
-                    targets.insert(act_key.clone(), QuicklinkTarget::OpenUri(uri.clone()));
+                    let act_key = canonical_id.clone();
+                    next_cache.insert(act_key.clone(), QuicklinkTarget::OpenUri(uri.clone()));
 
                     sink.push(SearchCandidate {
                         provider_id: provider_id.clone(),
@@ -127,8 +128,8 @@ impl SearchProvider for QuicklinksSearchProvider {
                 if !request.query.trim().is_empty() {
                     let command = request.query.trim().to_string();
                     let canonical_id = format!("cmd:{}", command);
-                    let act_key = format!("quicklink:{query_generation}:{canonical_id}");
-                    targets.insert(
+                    let act_key = canonical_id.clone();
+                    next_cache.insert(
                         act_key.clone(),
                         QuicklinkTarget::ExecuteCommand(command.clone()),
                     );
@@ -158,8 +159,8 @@ impl SearchProvider for QuicklinksSearchProvider {
                         percent_encode_query(q)
                     );
                     let canonical_id = format!("web:{}", url);
-                    let act_key = format!("quicklink:{query_generation}:{canonical_id}");
-                    targets.insert(act_key.clone(), QuicklinkTarget::OpenWeb(url));
+                    let act_key = canonical_id.clone();
+                    next_cache.insert(act_key.clone(), QuicklinkTarget::OpenWeb(url));
 
                     sink.push(SearchCandidate {
                         provider_id: provider_id.clone(),
@@ -185,8 +186,8 @@ impl SearchProvider for QuicklinksSearchProvider {
                 {
                     let cmd = request.query.trim().to_string();
                     let canonical_id = format!("cmd:{}", cmd);
-                    let act_key = format!("quicklink:{query_generation}:{canonical_id}");
-                    targets.insert(
+                    let act_key = canonical_id.clone();
+                    next_cache.insert(
                         act_key.clone(),
                         QuicklinkTarget::ExecuteCommand(cmd.clone()),
                     );
@@ -214,8 +215,8 @@ impl SearchProvider for QuicklinksSearchProvider {
                     let encoded = percent_encode_query(request.query.trim());
                     let url = format!("https://www.google.com/search?q={}", encoded);
                     let canonical_id = format!("web:{}", url);
-                    let act_key = format!("quicklink:{query_generation}:{canonical_id}");
-                    targets.insert(act_key.clone(), QuicklinkTarget::OpenWeb(url.clone()));
+                    let act_key = canonical_id.clone();
+                    next_cache.insert(act_key.clone(), QuicklinkTarget::OpenWeb(url.clone()));
 
                     sink.push(SearchCandidate {
                         provider_id: provider_id.clone(),
@@ -238,8 +239,8 @@ impl SearchProvider for QuicklinksSearchProvider {
             SearchMode::Keybindings => {
                 for (shortcut, label) in &self.keybindings {
                     let canonical_id = format!("keybinding:{}", shortcut);
-                    let act_key = format!("quicklink:{query_generation}:{canonical_id}");
-                    targets.insert(
+                    let act_key = canonical_id.clone();
+                    next_cache.insert(
                         act_key.clone(),
                         QuicklinkTarget::CopyKeybinding(shortcut.clone()),
                     );
@@ -264,6 +265,11 @@ impl SearchProvider for QuicklinksSearchProvider {
             }
             _ => {}
         }
+
+        self.cached_targets
+            .lock()
+            .unwrap()
+            .replace(query_generation, next_cache);
     }
 
     fn activate(&self, activation: SearchActivation) -> Result<ActionResult, SearchError> {
@@ -271,8 +277,7 @@ impl SearchProvider for QuicklinksSearchProvider {
             .cached_targets
             .lock()
             .unwrap()
-            .get(&activation.payload)
-            .cloned()
+            .get_cloned(&activation.payload)
             .ok_or_else(|| SearchError::NotFound(activation.payload.clone()))?;
 
         match target {
@@ -431,5 +436,32 @@ mod tests {
             ActionResult::OpenPath(p) => assert_eq!(p, PathBuf::from("/tmp")),
             other => panic!("expected OpenPath, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_quicklinks_activation_cache_replaces_previous_generation() {
+        let provider = QuicklinksSearchProvider::new(Vec::new());
+        let first_sink = SearchSink::new(1, SinkConfig::default());
+        provider.search(
+            SearchRequest::new("?first", SearchMode::WebSearch, "first", 1),
+            first_sink.clone(),
+        );
+        let stale_activation = first_sink.snapshot()[0].activation.clone();
+
+        let second_sink = SearchSink::new(2, SinkConfig::default());
+        provider.search(
+            SearchRequest::new("?second", SearchMode::WebSearch, "second", 2),
+            second_sink.clone(),
+        );
+
+        assert_eq!(provider.cached_targets.lock().unwrap().len(), 1);
+        assert!(matches!(
+            provider.activate(stale_activation),
+            Err(SearchError::NotFound(_))
+        ));
+        assert!(matches!(
+            provider.activate(second_sink.snapshot()[0].activation.clone()),
+            Ok(ActionResult::OpenWeb(_))
+        ));
     }
 }

@@ -6,6 +6,7 @@ use std::{
 use shilpo_m3e::IconName;
 
 use super::{
+    activation_cache::ActivationCache,
     calculator,
     parser::SearchMode,
     sink::SearchSink,
@@ -18,14 +19,14 @@ use super::{
 /// Provider that calculates arithmetic expressions and provides copyable results.
 #[derive(Clone, Default)]
 pub struct CalculatorSearchProvider {
-    cached_results: Arc<Mutex<HashMap<String, String>>>,
+    cached_results: Arc<Mutex<ActivationCache<String>>>,
 }
 
 impl CalculatorSearchProvider {
     /// Creates a new calculator search provider.
     pub fn new() -> Self {
         Self {
-            cached_results: Arc::new(Mutex::new(HashMap::new())),
+            cached_results: Arc::new(Mutex::new(ActivationCache::default())),
         }
     }
 }
@@ -49,12 +50,12 @@ impl SearchProvider for CalculatorSearchProvider {
     fn search(&self, request: SearchRequest, sink: SearchSink) {
         let query_generation = request.generation;
         let provider_id = self.id();
-        let mut cached = self.cached_results.lock().unwrap();
+        let mut next_cache = HashMap::new();
 
         if let Some(val) = calculator::evaluate_expression(&request.query) {
             let canonical_id = format!("calc:{}", val);
-            let act_key = format!("calc:{query_generation}:{canonical_id}");
-            cached.insert(act_key.clone(), val.clone());
+            let act_key = canonical_id.clone();
+            next_cache.insert(act_key.clone(), val.clone());
 
             let candidate = SearchCandidate {
                 provider_id: provider_id.clone(),
@@ -75,6 +76,11 @@ impl SearchProvider for CalculatorSearchProvider {
 
             sink.push(candidate);
         }
+
+        self.cached_results
+            .lock()
+            .unwrap()
+            .replace(query_generation, next_cache);
     }
 
     fn activate(&self, activation: SearchActivation) -> Result<ActionResult, SearchError> {
@@ -82,8 +88,7 @@ impl SearchProvider for CalculatorSearchProvider {
             .cached_results
             .lock()
             .unwrap()
-            .get(&activation.payload)
-            .cloned()
+            .get_cloned(&activation.payload)
             .ok_or_else(|| SearchError::NotFound(activation.payload.clone()))?;
 
         Ok(ActionResult::CopyCalculation(val))
@@ -141,5 +146,34 @@ mod tests {
             ActionResult::CopyCalculation(val) => assert_eq!(val, "20"),
             other => panic!("expected CopyCalculation, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_calculator_activation_cache_replaces_previous_generation() {
+        let provider = CalculatorSearchProvider::new();
+        let first_sink = SearchSink::new(1, SinkConfig::default());
+        provider.search(
+            SearchRequest::new("=2+2", SearchMode::Calculator, "2+2", 1),
+            first_sink.clone(),
+        );
+        let stale_activation = first_sink.snapshot()[0].activation.clone();
+
+        let second_sink = SearchSink::new(2, SinkConfig::default());
+        provider.search(
+            SearchRequest::new("=3+3", SearchMode::Calculator, "3+3", 2),
+            second_sink.clone(),
+        );
+
+        assert_eq!(provider.cached_results.lock().unwrap().len(), 1);
+        assert!(matches!(
+            provider.activate(stale_activation),
+            Err(SearchError::NotFound(_))
+        ));
+        assert_eq!(
+            provider
+                .activate(second_sink.snapshot()[0].activation.clone())
+                .unwrap(),
+            ActionResult::CopyCalculation("6".to_string())
+        );
     }
 }

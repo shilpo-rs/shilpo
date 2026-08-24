@@ -7,6 +7,8 @@ use shilpo_m3e::IconName;
 use shilpo_services::{AppScanner, Application};
 
 use super::{
+    activation_cache::ActivationCache,
+    matcher::fuzzy_match,
     parser::SearchMode,
     sink::SearchSink,
     types::{
@@ -19,7 +21,7 @@ use super::{
 #[derive(Clone)]
 pub struct AppSearchProvider {
     scanner: AppScanner,
-    cached_apps: Arc<Mutex<HashMap<String, Application>>>,
+    cached_apps: Arc<Mutex<ActivationCache<Application>>>,
 }
 
 impl AppSearchProvider {
@@ -27,7 +29,7 @@ impl AppSearchProvider {
     pub fn new(scanner: AppScanner) -> Self {
         Self {
             scanner,
-            cached_apps: Arc::new(Mutex::new(HashMap::new())),
+            cached_apps: Arc::new(Mutex::new(ActivationCache::default())),
         }
     }
 }
@@ -51,7 +53,7 @@ impl SearchProvider for AppSearchProvider {
     fn search(&self, request: SearchRequest, sink: SearchSink) {
         let query_generation = request.generation;
         let provider_id = self.id();
-        let mut cached = self.cached_apps.lock().unwrap();
+        let mut next_cache = HashMap::new();
 
         // Fresh read from scanner on every search() invocation
         let applications = self.scanner.applications();
@@ -63,10 +65,6 @@ impl SearchProvider for AppSearchProvider {
                 continue;
             }
 
-            let canonical_id = format!("app:{}", app.desktop_file.display());
-            let act_key = format!("app:{query_generation}:{canonical_id}");
-            cached.insert(act_key.clone(), app.clone());
-
             let mut aliases = Vec::new();
             if !app.exec.is_empty() {
                 aliases.push(app.exec.clone());
@@ -77,6 +75,28 @@ impl SearchProvider for AppSearchProvider {
             {
                 aliases.push(stem.to_string());
             }
+
+            let query = request.query.trim();
+            let matches_query = query.is_empty()
+                || fuzzy_match(query, &app.name).is_some()
+                || aliases
+                    .iter()
+                    .any(|alias| fuzzy_match(query, alias).is_some())
+                || app
+                    .categories
+                    .iter()
+                    .any(|category| fuzzy_match(query, category).is_some())
+                || app
+                    .description
+                    .as_deref()
+                    .is_some_and(|description| fuzzy_match(query, description).is_some());
+            if !matches_query {
+                continue;
+            }
+
+            let canonical_id = format!("app:{}", app.desktop_file.display());
+            let act_key = canonical_id.clone();
+            next_cache.insert(act_key.clone(), app.clone());
 
             let candidate = SearchCandidate {
                 provider_id: provider_id.clone(),
@@ -97,6 +117,11 @@ impl SearchProvider for AppSearchProvider {
 
             sink.push(candidate);
         }
+
+        self.cached_apps
+            .lock()
+            .unwrap()
+            .replace(query_generation, next_cache);
     }
 
     fn activate(&self, activation: SearchActivation) -> Result<ActionResult, SearchError> {
@@ -104,8 +129,7 @@ impl SearchProvider for AppSearchProvider {
             .cached_apps
             .lock()
             .unwrap()
-            .get(&activation.payload)
-            .cloned()
+            .get_cloned(&activation.payload)
             .ok_or_else(|| SearchError::NotFound(activation.payload.clone()))?;
 
         Ok(ActionResult::LaunchApp(app))
@@ -152,7 +176,7 @@ mod tests {
         let provider = AppSearchProvider::new(scanner);
         let sink = SearchSink::for_test(1);
 
-        let request = SearchRequest::new("test", SearchMode::Default, "test", 1);
+        let request = SearchRequest::new("", SearchMode::Default, "", 1);
         provider.search(request, sink.clone());
 
         let results = sink.snapshot();
@@ -262,5 +286,80 @@ mod tests {
         // Unknown activation payload returns NotFound
         let err = provider.activate(SearchActivation::new("unknown-key"));
         assert!(matches!(err, Err(SearchError::NotFound(_))));
+    }
+
+    #[test]
+    fn test_app_search_filters_before_caching_candidates() {
+        let calculator = make_app(
+            "Calculator",
+            "gnome-calculator",
+            "/usr/share/applications/calc.desktop",
+            vec!["Utility"],
+        );
+        let browser = make_app(
+            "Firefox",
+            "firefox",
+            "/usr/share/applications/firefox.desktop",
+            vec!["Network"],
+        );
+        let provider =
+            AppSearchProvider::new(AppScanner::from_applications(vec![calculator, browser]));
+        let sink = SearchSink::for_test(1);
+
+        provider.search(
+            SearchRequest::new("calc", SearchMode::Default, "calc", 1),
+            sink.clone(),
+        );
+
+        let results = sink.snapshot();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title, "Calculator");
+        assert_eq!(provider.cached_apps.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_app_activation_cache_replaces_previous_generation() {
+        let calculator = make_app(
+            "Calculator",
+            "gnome-calculator",
+            "/usr/share/applications/calc.desktop",
+            vec![],
+        );
+        let browser = make_app(
+            "Firefox",
+            "firefox",
+            "/usr/share/applications/firefox.desktop",
+            vec![],
+        );
+        let provider =
+            AppSearchProvider::new(AppScanner::from_applications(vec![calculator, browser]));
+
+        let first_sink = SearchSink::for_test(1);
+        provider.search(
+            SearchRequest::new("", SearchMode::Default, "", 1),
+            first_sink.clone(),
+        );
+        let stale_activation = first_sink
+            .snapshot()
+            .into_iter()
+            .find(|candidate| candidate.title == "Firefox")
+            .unwrap()
+            .activation;
+
+        let second_sink = SearchSink::for_test(2);
+        provider.search(
+            SearchRequest::new("calc", SearchMode::Default, "calc", 2),
+            second_sink.clone(),
+        );
+
+        assert_eq!(provider.cached_apps.lock().unwrap().len(), 1);
+        assert!(matches!(
+            provider.activate(stale_activation),
+            Err(SearchError::NotFound(_))
+        ));
+        assert!(matches!(
+            provider.activate(second_sink.snapshot()[0].activation.clone()),
+            Ok(ActionResult::LaunchApp(_))
+        ));
     }
 }
