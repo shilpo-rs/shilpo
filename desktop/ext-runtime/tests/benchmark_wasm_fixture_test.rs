@@ -1,3 +1,5 @@
+#![cfg(feature = "sdk-fixture")]
+
 use std::sync::Arc;
 
 use shilpo_ext_api::ExtensionId;

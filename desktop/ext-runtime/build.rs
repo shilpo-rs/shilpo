@@ -4,6 +4,10 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
+    if env::var_os("CARGO_FEATURE_SDK_FIXTURE").is_none() {
+        return;
+    }
+
     println!("cargo:rerun-if-changed=tests/fixtures/sdk-component/Cargo.toml");
     println!("cargo:rerun-if-changed=tests/fixtures/sdk-component/Cargo.lock");
     println!("cargo:rerun-if-changed=tests/fixtures/sdk-component/src");

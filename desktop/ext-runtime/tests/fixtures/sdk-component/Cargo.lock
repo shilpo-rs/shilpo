@@ -460,7 +460,7 @@ dependencies = [
 [[package]]
 name = "shilpo-ext-sdk"
 version = "0.1.0"
-source = "git+https://github.com/shilpo-rs/sdks?rev=c48c0f0c8736d7398d0b091d1f23f63963d9f897#c48c0f0c8736d7398d0b091d1f23f63963d9f897"
+source = "git+https://github.com/shilpo-rs/sdks?rev=fa28424c382c97bc5cfe66faf976267da7957684#fa28424c382c97bc5cfe66faf976267da7957684"
 dependencies = [
  "ureq",
  "wit-bindgen",

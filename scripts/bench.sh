@@ -64,19 +64,19 @@ case "$SUITE" in
     ;;
   wasm)
     printf "=== Running Wasm Cold Load Benchmarks (wasm) ===\n"
-    "${CARGO_CMD[@]}" bench -p shilpo-ext-runtime --bench wasm "$@"
+    "${CARGO_CMD[@]}" bench -p shilpo-ext-runtime --features sdk-fixture --bench wasm "$@"
     ;;
   all)
     printf "=== Running All Shilpo Benchmarks ===\n"
     "${CARGO_CMD[@]}" bench -p shilpo-ext-api --bench identity --bench view_tree "$@"
     "${CARGO_CMD[@]}" bench -p shilpo --bench config "$@"
-    "${CARGO_CMD[@]}" bench -p shilpo-ext-runtime --bench wasm "$@"
+    "${CARGO_CMD[@]}" bench -p shilpo-ext-runtime --features sdk-fixture --bench wasm "$@"
     ;;
   smoke)
     printf "=== Running Benchmark Smoke Checks (single-pass execution) ===\n"
     "${CARGO_CMD[@]}" bench -p shilpo-ext-api --bench identity --bench view_tree -- --test "$@"
     "${CARGO_CMD[@]}" bench -p shilpo --bench config -- --test "$@"
-    "${CARGO_CMD[@]}" bench -p shilpo-ext-runtime --bench wasm -- --test "$@"
+    "${CARGO_CMD[@]}" bench -p shilpo-ext-runtime --features sdk-fixture --bench wasm -- --test "$@"
     printf "=== All benchmark targets verified successfully ===\n"
     ;;
   *)

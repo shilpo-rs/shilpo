@@ -5,6 +5,10 @@ edition.workspace = true
 publish.workspace = true
 build = "build.rs"
 
+[features]
+default = []
+sdk-fixture = []
+
 [[example]]
 name = "generate_script_manifest_schema"
 path = "examples/generate_script_manifest_schema.rs"
@@ -12,6 +16,7 @@ path = "examples/generate_script_manifest_schema.rs"
 [[bench]]
 name = "wasm"
 harness = false
+required-features = ["sdk-fixture"]
 
 [dependencies]
 base64.workspace = true

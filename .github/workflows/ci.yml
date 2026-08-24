@@ -49,7 +49,7 @@ jobs:
         uses: taiki-e/install-action@nextest
 
       - name: Run workspace tests
-        run: timeout 20m cargo nextest run --workspace
+        run: timeout 20m cargo nextest run --workspace --features shilpo-ext-runtime/sdk-fixture
 
       - name: Verify clean worktree
         run: test -z "$(git status --porcelain --untracked-files=all)"
@@ -91,6 +91,12 @@ jobs:
         env:
           CI: "1"
         run: timeout 5m bash scripts/static_checks.sh
+
+      - name: Verify workspace topology
+        run: timeout 5m bash tests/test_workspace_topology.sh
+
+      - name: Test installer
+        run: timeout 5m bash tests/test_installer.sh
 
       - name: Verify clean worktree
         run: test -z "$(git status --porcelain --untracked-files=all)"

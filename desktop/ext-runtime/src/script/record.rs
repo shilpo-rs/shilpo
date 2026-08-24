@@ -20,7 +20,7 @@ pub struct ScriptRecord {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ScriptRecordPayload {
     View {
-        view: ViewTree,
+        view: Box<ViewTree>,
     },
     Text {
         text: String,
@@ -68,7 +68,7 @@ pub fn decode_and_validate_record(
     }
 
     let view_tree = match record.payload {
-        ScriptRecordPayload::View { view } => view,
+        ScriptRecordPayload::View { view } => *view,
         ScriptRecordPayload::Text {
             text,
             tooltip,

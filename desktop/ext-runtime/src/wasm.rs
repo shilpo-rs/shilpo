@@ -2621,8 +2621,10 @@ mod bar_menu_component_fixture_tests {
         }
     }
 
+    #[cfg(feature = "sdk-fixture")]
     const SDK_FIXTURE: &[u8] = include_bytes!(env!("SHILPO_SDK_FIXTURE_WASM"));
 
+    #[cfg(feature = "sdk-fixture")]
     #[test]
     fn sdk_authored_guest_component_instantiates_and_renders_view_tree() {
         let mut runtime =
@@ -3017,22 +3019,16 @@ fn convert_view_tree_from_wit(
             wit_view::SemanticColorToken::SurfaceContainerHighest => {
                 api::SemanticColorToken::SurfaceContainerHighest
             }
-            wit_view::SemanticColorToken::SurfaceVariant => {
-                api::SemanticColorToken::SurfaceVariant
-            }
+            wit_view::SemanticColorToken::SurfaceVariant => api::SemanticColorToken::SurfaceVariant,
             wit_view::SemanticColorToken::OnSurfaceVariant => {
                 api::SemanticColorToken::OnSurfaceVariant
             }
-            wit_view::SemanticColorToken::InverseSurface => {
-                api::SemanticColorToken::InverseSurface
-            }
+            wit_view::SemanticColorToken::InverseSurface => api::SemanticColorToken::InverseSurface,
             wit_view::SemanticColorToken::InverseOnSurface => {
                 api::SemanticColorToken::InverseOnSurface
             }
             wit_view::SemanticColorToken::Outline => api::SemanticColorToken::Outline,
-            wit_view::SemanticColorToken::OutlineVariant => {
-                api::SemanticColorToken::OutlineVariant
-            }
+            wit_view::SemanticColorToken::OutlineVariant => api::SemanticColorToken::OutlineVariant,
             wit_view::SemanticColorToken::Shadow => api::SemanticColorToken::Shadow,
             wit_view::SemanticColorToken::Scrim => api::SemanticColorToken::Scrim,
             wit_view::SemanticColorToken::SurfaceTint => api::SemanticColorToken::SurfaceTint,
@@ -3044,16 +3040,12 @@ fn convert_view_tree_from_wit(
             wit_view::SemanticColorToken::OnPrimaryContainer => {
                 api::SemanticColorToken::OnPrimaryContainer
             }
-            wit_view::SemanticColorToken::InversePrimary => {
-                api::SemanticColorToken::InversePrimary
-            }
+            wit_view::SemanticColorToken::InversePrimary => api::SemanticColorToken::InversePrimary,
             wit_view::SemanticColorToken::PrimaryFixed => api::SemanticColorToken::PrimaryFixed,
             wit_view::SemanticColorToken::PrimaryFixedDim => {
                 api::SemanticColorToken::PrimaryFixedDim
             }
-            wit_view::SemanticColorToken::OnPrimaryFixed => {
-                api::SemanticColorToken::OnPrimaryFixed
-            }
+            wit_view::SemanticColorToken::OnPrimaryFixed => api::SemanticColorToken::OnPrimaryFixed,
             wit_view::SemanticColorToken::OnPrimaryFixedVariant => {
                 api::SemanticColorToken::OnPrimaryFixedVariant
             }
@@ -3065,9 +3057,7 @@ fn convert_view_tree_from_wit(
             wit_view::SemanticColorToken::OnSecondaryContainer => {
                 api::SemanticColorToken::OnSecondaryContainer
             }
-            wit_view::SemanticColorToken::SecondaryFixed => {
-                api::SemanticColorToken::SecondaryFixed
-            }
+            wit_view::SemanticColorToken::SecondaryFixed => api::SemanticColorToken::SecondaryFixed,
             wit_view::SemanticColorToken::SecondaryFixedDim => {
                 api::SemanticColorToken::SecondaryFixedDim
             }
@@ -3085,9 +3075,7 @@ fn convert_view_tree_from_wit(
             wit_view::SemanticColorToken::OnTertiaryContainer => {
                 api::SemanticColorToken::OnTertiaryContainer
             }
-            wit_view::SemanticColorToken::TertiaryFixed => {
-                api::SemanticColorToken::TertiaryFixed
-            }
+            wit_view::SemanticColorToken::TertiaryFixed => api::SemanticColorToken::TertiaryFixed,
             wit_view::SemanticColorToken::TertiaryFixedDim => {
                 api::SemanticColorToken::TertiaryFixedDim
             }
@@ -3099,9 +3087,7 @@ fn convert_view_tree_from_wit(
             }
             wit_view::SemanticColorToken::Error => api::SemanticColorToken::Error,
             wit_view::SemanticColorToken::OnError => api::SemanticColorToken::OnError,
-            wit_view::SemanticColorToken::ErrorContainer => {
-                api::SemanticColorToken::ErrorContainer
-            }
+            wit_view::SemanticColorToken::ErrorContainer => api::SemanticColorToken::ErrorContainer,
             wit_view::SemanticColorToken::OnErrorContainer => {
                 api::SemanticColorToken::OnErrorContainer
             }

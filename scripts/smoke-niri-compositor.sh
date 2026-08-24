@@ -141,6 +141,8 @@ target_workspace=$("$NIRI_BIN" msg -j workspaces \
     | jq -r --arg init "$initial_workspace" '.[] | select((.id | tostring) != $init) | .id' \
     | head -n1)
 
+# Invoked indirectly by `trap`; ShellCheck cannot see that call edge.
+# shellcheck disable=SC2317
 restore_state() {
     if [ -n "${initial_window:-}" ] && [ "${initial_window:-}" != null ] && [ -n "${initial_workspace:-}" ]; then
         "$SHILPO_BIN" window move "$initial_window" --workspace "$initial_workspace" >/dev/null 2>&1 || true
