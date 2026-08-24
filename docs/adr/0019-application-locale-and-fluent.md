@@ -20,7 +20,7 @@ Locale intent precedence is explicit config, `LC_ALL`, `LC_MESSAGES`, `LANG`, th
 underscores are normalized to BCP 47. Resolution selects an exact supported locale, then a supported locale with the
 same language, then `en-US`. Invalid and unsupported intent therefore resolves deterministically to `en-US`.
 
-Project Fluent catalogs are embedded with mandatory `en-US` coverage and partial locale fallback. `bn-BD` is the pilot
+Project Fluent catalogs are embedded with mandatory `en-US` coverage and partial locale fallback. `bn-IN` is the pilot
 non-English catalog. Callers pass product-owned named argument values through the locale interface rather than
 depending on Fluent engine types. Missing, malformed, valueless, and formatting failures remain explicit errors; user,
 media, application, and extension-provided text is never treated as a translation key.

@@ -14,7 +14,7 @@ use gpui::{App, Global};
 use unic_langid::LanguageIdentifier;
 
 const DEFAULT_LOCALE: &str = "en-US";
-const SUPPORTED_LOCALES: &[&str] = &[DEFAULT_LOCALE, "bn-BD"];
+const SUPPORTED_LOCALES: &[&str] = &[DEFAULT_LOCALE, "bn-IN"];
 
 /// POSIX locale variables captured at the application process seam.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -312,7 +312,7 @@ impl ApplicationLocale {
 impl Translator {
     pub fn for_locale(locale: ResolvedLocale) -> Self {
         let selected_source = match locale.as_str() {
-            "bn-BD" => include_str!("../../locales/bn-BD/main.ftl"),
+            "bn-IN" => include_str!("../../locales/bn-IN/main.ftl"),
             _ => include_str!("../../locales/en-US/main.ftl"),
         };
         let selected = build_bundle(locale.as_str(), selected_source);

@@ -27,13 +27,13 @@ fn empty_environment_values_do_not_shadow_lower_precedence_locale() {
 
     let resolved = LocaleResolver::default().resolve(None, &environment);
 
-    assert_eq!(resolved.as_str(), "bn-BD");
+    assert_eq!(resolved.as_str(), "bn-IN");
 }
 
 #[test]
 fn lc_all_precedes_lc_messages_and_lang_when_config_is_absent() {
     let environment = LocaleEnvironment {
-        lc_all: Some("bn-BD".into()),
+        lc_all: Some("bn-IN".into()),
         lc_messages: Some("en-US".into()),
         lang: Some("en-US".into()),
     };
@@ -42,7 +42,7 @@ fn lc_all_precedes_lc_messages_and_lang_when_config_is_absent() {
         LocaleResolver::default()
             .resolve(None, &environment)
             .as_str(),
-        "bn-BD"
+        "bn-IN"
     );
 }
 
@@ -78,7 +78,7 @@ fn resolver_uses_language_fallback_then_en_us_for_invalid_or_unsupported_input()
 
     assert_eq!(
         resolver.resolve(Some("bn-IN"), &environment).as_str(),
-        "bn-BD"
+        "bn-IN"
     );
     assert_eq!(
         resolver.resolve(Some("zh-CN"), &environment).as_str(),
@@ -94,7 +94,7 @@ fn resolver_uses_language_fallback_then_en_us_for_invalid_or_unsupported_input()
 
 #[test]
 fn partial_catalog_falls_back_and_missing_or_malformed_keys_are_reported() {
-    let locale = LocaleResolver::default().resolve(Some("bn-BD"), &LocaleEnvironment::default());
+    let locale = LocaleResolver::default().resolve(Some("bn-IN"), &LocaleEnvironment::default());
     let translator = Translator::for_locale(locale);
     let mut count = TranslationArgs::new();
     count.set_number("count", 2);
@@ -156,7 +156,7 @@ fn locale_service_publishes_one_live_refresh_when_effective_locale_changes() {
     assert!(service.refresh(Some("bn_BD.UTF-8")));
     assert!(updates.has_changed().unwrap());
     let update = updates.borrow_and_update().clone();
-    assert_eq!(update.locale.as_str(), "bn-BD");
+    assert_eq!(update.locale.as_str(), "bn-IN");
     assert_eq!(update.revision, 1);
     assert_eq!(
         service
