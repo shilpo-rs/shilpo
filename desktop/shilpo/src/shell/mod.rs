@@ -39,7 +39,7 @@ pub use overview::WorkspaceOverview;
 pub use polkit::PolkitDialogView;
 pub use runtime::ShellRuntime;
 
-pub fn run_daemon() {
+pub fn run_daemon(developer_mode: bool) {
     let obs_guard = init_tracing();
     let filter_controller = obs_guard.as_ref().and_then(|g| g.log_filter_controller());
 
@@ -56,11 +56,12 @@ pub fn run_daemon() {
         Arc::new(next)
     });
 
-    let dbus_service = Arc::new(ShellDbusService::new(
+    let dbus_service = Arc::new(ShellDbusService::new_with_developer_mode(
         mailbox_tx.clone(),
         compositor_broker.clone(),
         status.clone(),
         telemetry.clone(),
+        developer_mode,
     ));
 
     let debug_service = Arc::new(DebugDbusService::new(filter_controller, mailbox_tx));

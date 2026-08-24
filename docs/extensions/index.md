@@ -67,9 +67,18 @@ shilpo ext lint my-extension
 # Validate built component and runtime package
 shilpo ext check my-extension
 
-# Start live hot-reloading development server
+# In one terminal, explicitly allow local extension code for this daemon process
+systemctl --user stop shilpo-shell.service
+shilpo daemon --developer-mode
+
+# In another terminal, start live hot-reloading development
 shilpo ext dev my-extension
 
 # Package into a distributable .shilpo-ext archive
 shilpo ext pack my-extension
 ```
+
+`--developer-mode` permits callers on the user session bus to ask Shilpo to load local extension code. It is denied by
+default, is never persisted in configuration, and lasts only for the lifetime of the `shilpo daemon` process started
+with the flag. Each accepted development session remains owned by its initiating unique D-Bus sender; other senders
+cannot reload or end it. Stop the foreground daemon and restart `shilpo-shell.service` to return to normal operation.

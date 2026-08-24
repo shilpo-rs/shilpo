@@ -672,6 +672,44 @@ async fn test_clean_lifecycle_drop() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_dev_session_start_is_denied_by_default() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().to_path_buf();
+    std::fs::write(
+        root.join("extension.toml"),
+        r#"
+        schema_version = 1
+        id = "org.shilpo.default-deny"
+        name = "Default Deny"
+        version = "0.1.0"
+        api_version = "0.1.0"
+        min_shilpo_version = "0.1.0"
+        "#,
+    )
+    .unwrap();
+
+    let harness = TestDbusHarness::new().await;
+    let error = bounded!(
+        "StartDevSession default denial",
+        harness.shell_proxy.start_dev_session(
+            "org.shilpo.default-deny".into(),
+            root.to_string_lossy().to_string()
+        )
+    )
+    .expect_err("developer sessions must be denied unless the daemon opted in");
+
+    assert_method_error(error, "org.freedesktop.DBus.Error.AccessDenied");
+    assert!(
+        harness
+            .shell_service
+            .dev_sessions()
+            .lock()
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_dev_session_start_reload_end_flow() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().to_path_buf();
@@ -690,7 +728,7 @@ async fn test_dev_session_start_reload_end_flow() {
     std::fs::write(root.join("extension.toml"), manifest_toml).unwrap();
     std::fs::write(root.join("extension.wasm"), b"DUMMY_BYTECODE").unwrap();
 
-    let harness = TestDbusHarness::new().await;
+    let harness = TestDbusHarness::new_developer_mode().await;
 
     // Set up a mock/real supervisor
     let supervisor = crate::extensions::ExtensionSupervisor::new();
@@ -737,7 +775,7 @@ async fn test_dev_session_start_reload_end_flow() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_dev_session_security_and_manifest_validation() {
-    let harness = TestDbusHarness::new().await;
+    let harness = TestDbusHarness::new_developer_mode().await;
 
     // 1. Non-existent path
     let err1 = bounded!(
@@ -788,8 +826,73 @@ async fn test_dev_session_security_and_manifest_validation() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_dev_session_reload_and_end_require_owning_unique_sender() {
+    let harness = TestDbusHarness::new_developer_mode().await;
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().to_path_buf();
+    std::fs::write(
+        root.join("extension.toml"),
+        r#"
+        schema_version = 1
+        id = "org.shilpo.owner-check"
+        name = "Owner Check"
+        version = "0.1.0"
+        api_version = "0.1.0"
+        min_shilpo_version = "0.1.0"
+        "#,
+    )
+    .unwrap();
+
+    let session_id = bounded!(
+        "StartDevSession for owner check",
+        harness.shell_proxy.start_dev_session(
+            "org.shilpo.owner-check".into(),
+            root.to_string_lossy().to_string()
+        )
+    )
+    .expect("developer mode should permit a session");
+
+    harness
+        .shell_service
+        .dev_sessions()
+        .lock()
+        .unwrap()
+        .get_mut(&session_id)
+        .expect("minted session")
+        .caller_unique_name = ":different-unique-sender".into();
+
+    let reload_error = bounded!(
+        "ReloadDevSession non-owner denial",
+        harness.shell_proxy.reload_dev_session(
+            session_id.clone(),
+            1,
+            "extension.wasm".into(),
+            1_000
+        )
+    )
+    .expect_err("a non-owner must not reload a developer session");
+    assert_method_error(reload_error, "org.freedesktop.DBus.Error.AccessDenied");
+
+    let end_error = bounded!(
+        "EndDevSession non-owner denial",
+        harness.shell_proxy.end_dev_session(session_id.clone())
+    )
+    .expect_err("a non-owner must not end a developer session");
+    assert_method_error(end_error, "org.freedesktop.DBus.Error.AccessDenied");
+    assert!(
+        harness
+            .shell_service
+            .dev_sessions()
+            .lock()
+            .unwrap()
+            .contains_key(&session_id),
+        "a denied lifecycle call must preserve the owner's session"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_dev_session_disconnect_cleanup() {
-    let harness = TestDbusHarness::new().await;
+    let harness = TestDbusHarness::new_developer_mode().await;
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().to_path_buf();
     std::fs::write(

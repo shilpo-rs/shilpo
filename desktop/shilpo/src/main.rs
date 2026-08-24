@@ -112,8 +112,8 @@ async fn main() {
     };
 
     let exit_code = match command {
-        Commands::Daemon => {
-            shilpo::shell::run_daemon();
+        Commands::Daemon { developer_mode } => {
+            shilpo::shell::run_daemon(developer_mode);
             std::process::exit(EXIT_SUCCESS);
         }
         Commands::Settings => {

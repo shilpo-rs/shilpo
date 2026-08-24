@@ -1,11 +1,39 @@
 use std::fs;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use tempfile::TempDir;
 
 use crate::adapters::ConfigMigrateAdapter;
 use crate::args::{Cli, Commands, ConfigCommands, ModeValue, ShellCommands, VisibilityAction};
 use crate::output::{CliOutput, EXIT_FAILURE, EXIT_INVALID_ARGS, JsonEnvelope, JsonError};
+
+#[test]
+fn daemon_developer_mode_is_explicit_and_documented() {
+    let default = Cli::try_parse_from(["shilpo", "daemon"]).unwrap();
+    assert!(matches!(
+        default.command,
+        Some(Commands::Daemon {
+            developer_mode: false
+        })
+    ));
+
+    let enabled = Cli::try_parse_from(["shilpo", "daemon", "--developer-mode"]).unwrap();
+    assert!(matches!(
+        enabled.command,
+        Some(Commands::Daemon {
+            developer_mode: true
+        })
+    ));
+
+    let mut command = Cli::command();
+    let help = command
+        .find_subcommand_mut("daemon")
+        .expect("daemon subcommand")
+        .render_long_help()
+        .to_string();
+    assert!(help.contains("local extension code"));
+    assert!(help.contains("lifetime of this daemon"));
+}
 
 #[test]
 fn test_cli_parser_shell_subcommands() {

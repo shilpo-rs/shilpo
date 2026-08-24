@@ -35,13 +35,29 @@ impl TestDbusHarness {
         Self::new_with_controller(Some(LogFilterController::new_for_testing("info"))).await
     }
 
+    pub async fn new_developer_mode() -> Self {
+        Self::new_with_controller_and_developer_mode(
+            Some(LogFilterController::new_for_testing("info")),
+            true,
+        )
+        .await
+    }
+
     pub async fn new_with_controller(controller: Option<LogFilterController>) -> Self {
+        Self::new_with_controller_and_developer_mode(controller, false).await
+    }
+
+    async fn new_with_controller_and_developer_mode(
+        controller: Option<LogFilterController>,
+        developer_mode: bool,
+    ) -> Self {
         let (tx, rx) = mpsc::channel(128);
-        let shell_service = ShellDbusService::new(
+        let shell_service = ShellDbusService::new_with_developer_mode(
             tx.clone(),
             Arc::new(Mutex::new(None)),
             Arc::new(arc_swap::ArcSwap::from_pointee(ShellStatus::default())),
             Arc::new(arc_swap::ArcSwap::from_pointee(ShellTelemetry::default())),
+            developer_mode,
         );
         let debug_service = DebugDbusService::new(controller, tx);
 

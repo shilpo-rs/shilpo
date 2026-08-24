@@ -54,6 +54,7 @@ pub struct DevSession {
 /// D-Bus interface implementation for `org.shilpo.Shell`.
 #[derive(Clone)]
 pub struct ShellDbusService {
+    developer_mode: bool,
     mailbox_tx: mpsc::Sender<ShellCommand>,
     compositor_broker: Arc<Mutex<Option<Arc<CompositorCommandBroker>>>>,
     extension_coordinator: Arc<Mutex<Option<Arc<crate::extensions::ExtensionCoordinator>>>>,
@@ -71,7 +72,18 @@ impl ShellDbusService {
         status: Arc<arc_swap::ArcSwap<ShellStatus>>,
         telemetry: Arc<arc_swap::ArcSwap<ShellTelemetry>>,
     ) -> Self {
+        Self::new_with_developer_mode(mailbox_tx, compositor_broker, status, telemetry, false)
+    }
+
+    pub fn new_with_developer_mode(
+        mailbox_tx: mpsc::Sender<ShellCommand>,
+        compositor_broker: Arc<Mutex<Option<Arc<CompositorCommandBroker>>>>,
+        status: Arc<arc_swap::ArcSwap<ShellStatus>>,
+        telemetry: Arc<arc_swap::ArcSwap<ShellTelemetry>>,
+        developer_mode: bool,
+    ) -> Self {
         Self {
+            developer_mode,
             mailbox_tx,
             compositor_broker,
             extension_coordinator: Arc::new(Mutex::new(None)),
@@ -597,6 +609,14 @@ impl ShellDbusService {
             outcome = tracing::field::Empty
         );
         let _enter = _span.enter();
+
+        if !self.developer_mode {
+            tracing::Span::current().record("outcome", "denied");
+            return Err(zbus::fdo::Error::AccessDenied(
+                "developer mode is disabled; restart with `shilpo daemon --developer-mode` to allow loading local extension code for this daemon's lifetime"
+                    .into(),
+            ));
+        }
 
         let sender = header
             .sender()
