@@ -112,9 +112,23 @@ impl ProcessRunner for RealProcessRunner {
                 join_reader(stderr_reader);
                 return Err(ScriptProcessError::Timeout);
             }
-            match child.try_wait() {
-                Ok(Some(status)) => break status,
-                Ok(None) => thread::sleep(Duration::from_millis(5)),
+            match child_has_exited(&mut child) {
+                Ok(true) => {
+                    // `child_has_exited` observes with WNOWAIT, retaining ownership of
+                    // the leader PID/PGID until descendants have been signalled.
+                    terminate_descendants(pid);
+                    let status = child.wait();
+                    reap_group(pid);
+                    match status {
+                        Ok(status) => break status,
+                        Err(error) => {
+                            join_reader(stdout_reader);
+                            join_reader(stderr_reader);
+                            return Err(ScriptProcessError::Io(error.to_string()));
+                        }
+                    }
+                }
+                Ok(false) => thread::sleep(Duration::from_millis(5)),
                 Err(error) => {
                     terminate_group(pid, &mut child);
                     join_reader(stdout_reader);
@@ -124,8 +138,6 @@ impl ProcessRunner for RealProcessRunner {
             }
         };
 
-        // A successful direct child is not permission to leave background descendants alive.
-        terminate_descendants(pid);
         let stdout = join_reader(stdout_reader);
         let stderr = join_reader(stderr_reader);
         Ok(ProcessOutput {
@@ -162,6 +174,31 @@ impl ProcessRunner for RealProcessRunner {
             stderr_buf: Vec::new(),
         }))
     }
+}
+
+#[cfg(unix)]
+fn child_has_exited(child: &mut Child) -> io::Result<bool> {
+    let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::zeroed();
+    // SAFETY: `info` points to writable storage for siginfo_t. WNOWAIT observes the
+    // specific child without reaping it, preserving the PID/PGID until group cleanup.
+    let result = unsafe {
+        libc::waitid(
+            libc::P_PID,
+            child.id(),
+            info.as_mut_ptr(),
+            libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+        )
+    };
+    if result == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: waitid succeeded and initialized `info`; zero si_pid denotes no state change.
+    Ok(unsafe { info.assume_init().si_pid() } != 0)
+}
+
+#[cfg(not(unix))]
+fn child_has_exited(child: &mut Child) -> io::Result<bool> {
+    child.try_wait().map(|status| status.is_some())
 }
 
 fn spawn_child(
@@ -385,3 +422,37 @@ fn reap_group(pid: u32) {
 
 #[cfg(not(unix))]
 fn reap_group(_pid: u32) {}
+
+#[cfg(test)]
+mod process_group_tests {
+    use super::{child_has_exited, reap_group, spawn_child};
+    use std::path::Path;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn completed_child_remains_owned_until_process_group_is_signalled() {
+        let mut child = spawn_child(
+            Path::new("/bin/sh"),
+            &["-c".into(), "exit 0".into()],
+            Path::new("/"),
+        )
+        .expect("spawn process-group leader");
+        let pid = child.id();
+
+        while !child_has_exited(&mut child).expect("observe child state") {
+            thread::sleep(Duration::from_millis(1));
+        }
+
+        // Signal 0 does not mutate the group; it proves the leader PID/PGID has not
+        // been released for reuse before cleanup targets it.
+        let group_is_still_owned = unsafe { libc::kill(-(pid as i32), 0) } == 0;
+        let _ = child.wait();
+        reap_group(pid);
+
+        assert!(
+            group_is_still_owned,
+            "observing exit must not reap the leader before group signalling"
+        );
+    }
+}
